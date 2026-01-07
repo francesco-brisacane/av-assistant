@@ -1,0 +1,28 @@
+{
+  "IT": {
+    "title": "AV Assistant: Nutrizione & Attivismo",
+    "select_lang": "Lingua / Language",
+    "select_mode": "Scegli l'esperto:",
+    "mode_nutri": "Nutrizionista Scientifico",
+    "mode_chef": "Coach in Cucina",
+    "disclaimer_title": "⚠️ DISCLAIMER MEDICO",
+    "disclaimer_text": "Non sostituisce il parere medico. In caso di sintomi, consulta un professionista.",
+    "input_placeholder": "Fai la tua domanda...",
+    "clear_chat": "🗑️ Cancella Chat",
+    "loading": "Sto elaborando...",
+    "footer_credit": "Powered by AV Tech Team"
+  },
+  "EN": {
+    "title": "AV Assistant: Nutrition & Outreach",
+    "select_lang": "Language",
+    "select_mode": "Choose Expert:",
+    "mode_nutri": "Scientific Nutritionist",
+    "mode_chef": "Kitchen Coach",
+    "disclaimer_title": "⚠️ MEDICAL DISCLAIMER",
+    "disclaimer_text": "Not medical advice. For health concerns, consult a professional.",
+    "input_placeholder": "Ask your question...",
+    "clear_chat": "🗑️ Clear Chat",
+    "loading": "Thinking...",
+    "footer_credit": "Powered by AV Tech Team"
+  }
+}

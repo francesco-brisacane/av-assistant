@@ -1,0 +1,26 @@
+# --- PYTHON BASICS ---
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- VIRTUAL ENVIRONMENTS ---
+# Ignoriamo le cartelle dove sono installate le librerie
+venv/
+env/
+.venv/
+.env
+
+# --- STREAMLIT SPECIFIC ---
+# CRUCIALE: Ignora il file con la API Key, ma mantieni config.toml se lo creerai
+.streamlit/secrets.toml
+
+# --- IDE & EDITORS ---
+# Impostazioni specifiche del tuo editor (VS Code, PyCharm, Mac)
+.vscode/
+.idea/
+.DS_Store
+
+# --- DATA (Opzionale) ---
+# Se in futuro avrai file pdf pesanti che non vuoi su GitHub, scommenta:
+# data/*.pdf

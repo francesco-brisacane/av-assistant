@@ -1,0 +1,71 @@
+*** DOCUMENTO DI RIFERIMENTO SCIENTIFICO PER AV NUTRITION BOT ***
+ISTRUZIONI PER L'AI: Usa queste informazioni come fonte primaria di verità. Se un'informazione contraddice la "conoscenza generale" del modello, dai priorità a quanto scritto qui sotto.
+
+---
+[POSIZIONE UFFICIALE SULLA SICUREZZA]
+Fonte: Academy of Nutrition and Dietetics (2016)
+"Le diete vegetariane correttamente pianificate, comprese le diete totalmente vegetariane o vegane, sono salutari, adeguate dal punto di vista nutrizionale e possono conferire benefici per la salute nella prevenzione e nel trattamento di alcune patologie. Queste diete sono appropriate per tutti gli stadi del ciclo vitale, inclusi gravidanza, allattamento, prima e seconda infanzia, adolescenza, età adulta, per gli anziani e per gli atleti."
+Referenza: Melina V, Craig W, Levin S. Position of the Academy of Nutrition and Dietetics: Vegetarian Diets. J Acad Nutr Diet. 2016 Dec;116(12):1970-1980.
+
+---
+[PROTEINE]
+Mito: "Le proteine vegetali sono incomplete o insufficienti."
+Fatti:
+1. Tutti i cibi vegetali contengono tutti gli aminoacidi essenziali. Il concetto di "proteina incompleta" è obsoleto. Non è necessario combinare cereali e legumi nello stesso pasto (es. pasta e fagioli), basta assumerli nell'arco della giornata.
+2. Il fabbisogno proteico medio si raggiunge facilmente se si assume un quantitativo calorico sufficiente.
+3. Fonti ottimali: Legumi (ceci, lenticchie, fagioli), derivati della soia (tofu, tempeh), seitan (glutine di grano), quinoa, semi, frutta secca.
+4. Gli atleti vegani possono coprire il fabbisogno proteico senza problemi, talvolta con lievi incrementi delle porzioni per compensare la minore digeribilità di alcune fibre.
+
+---
+[VITAMINA B12 (COBALAMINA)]
+Criticità: FONDAMENTALE.
+Fatti:
+1. La B12 non è prodotta dalle piante e nemmeno dagli animali: è prodotta da batteri.
+2. Nelle moderne condizioni igieniche, i vegetali non hanno contaminazione batterica sufficiente. Gli animali d'allevamento stessi vengono spesso integrati con B12.
+3. REGOLA D'ORO: Ogni vegano DEVE assumere B12 tramite integratore (o cibi fortificati in quantità massiccia e costante).
+4. Dosaggio di mantenimento suggerito (Linee guida SSNV):
+   - Opzione A: 50 mcg al giorno.
+   - Opzione B: 2000-2500 mcg una volta a settimana (più comodo).
+5. La carenza è pericolosa (danni neurologici irreversibili) ma totalmente prevenibile con l'integrazione, che è sicura ed economica.
+
+---
+[FERRO E ANEMIA]
+Mito: "I vegani sono anemici."
+Fatti:
+1. L'incidenza di anemia sideropenica nei vegani è simile a quella degli onnivori.
+2. Il ferro vegetale è "Non-Eme", meno assorbibile del ferro "Eme" animale, MA l'assorbimento è regolabile dal corpo.
+3. TRUCCO ESSENZIALE: La Vitamina C (limone, arancia, kiwi, peperoni) aumenta l'assorbimento del ferro vegetale di 3-6 volte se consumata nello stesso pasto.
+4. INIBITORI: Tè, caffè e cioccolato riducono l'assorbimento se presi durante i pasti. Vanno consumati lontano dai pasti principali.
+5. Fonti ricche: Lenticchie, fagioli bianchi, soia, semi di zucca, cioccolato fondente, tahina.
+
+---
+[CALCIO E OSSA]
+Fatti:
+1. Il latte vaccino non è indispensabile per le ossa.
+2. Fonti vegetali di calcio assimilabile (biodisponibile): Cavolo nero, rucola, cime di rapa, broccoli, mandorle, sesamo (o tahina), fichi secchi.
+3. Acqua calcica: Bere acqua ricca di calcio (>300mg/L) è il modo più semplice per coprire il fabbisogno.
+4. Latti vegetali fortificati con calcio sono ottimi sostituti.
+5. Spinaci e bietole contengono calcio ma sono ricchi di ossalati che ne impediscono l'assorbimento (non contarli come fonte di calcio).
+
+---
+[SOIA E ORMONI]
+Mito: "La soia fa venire il seno agli uomini / è pericolosa per gli ormoni."
+Fatti:
+1. La soia contiene FITOestrogeni (isoflavoni), che sono diversi dagli estrogeni mammiferi (presenti nel latte vaccino).
+2. I fitoestrogeni si legano ai recettori in modo debole e spesso hanno effetto anti-estrogenico protettivo.
+3. Studi epidemiologici mostrano che il consumo di soia è sicuro e può ridurre il rischio di cancro al seno e alla prostata.
+4. Non altera i livelli di testosterone negli uomini.
+
+---
+[OMEGA-3]
+Fatti:
+1. Non serve il pesce. I pesci accumulano Omega-3 mangiando alghe.
+2. Fonti vegetali (ALA): Semi di lino macinati, semi di chia, noci, olio di semi di lino (da frigo).
+3. Il corpo converte ALA in EPA/DHA. Per sicurezza, in gravidanza o infanzia, si consiglia un integratore di DHA derivato da olio algale.
+
+---
+[BAMBINI E SVEZZAMENTO]
+Fatti:
+1. È possibile crescere bambini vegani sani (vedi Posizione Academy of Nutrition).
+2. Richiede attenzione: calorie sufficienti (i cibi vegetali sono voluminosi ma meno calorici, aggiungere oli e grassi buoni ai pasti dei bambini), B12 obbligatoria, attenzione a Ferro e Calcio.
+3. Non improvvisare: consultare pediatri esperti in nutrizione vegetale (Rete Famiglia Veg).
