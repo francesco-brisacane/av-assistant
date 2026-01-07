@@ -159,7 +159,18 @@ with st.sidebar:
     st.caption(t.get("footer_credit", ""))
 
 # --- 6. LOGICA CHAT ---
-st.title(t["title"])
+
+# Definiamo un'icona dinamica in base alla modalità
+if selected_mode_label == t["mode_nutri"]:
+    page_icon = "🧬" # O un'altra icona scientifica
+else:
+    page_icon = "🍳" # O un cappello da chef
+
+# Titolo Dinamico: Icona + Nome della modalità scelta
+st.title(f"{page_icon} {selected_mode_label}")
+
+# Opzionale: Aggiungi un sottotitolo piccolo per il branding
+st.caption("Anonymous for the Voiceless Assistant")
 
 # Caricamento e preparazione Prompt
 raw_prompt = load_text_file(current_prompt_file)
