@@ -19,42 +19,54 @@ def apply_custom_css():
             border-right: 1px solid #333;
         }
 
-        /* 3. Input Text (La barra dove scrivi) */
+        /* 3. Input Text */
         .stChatInput input {
             background-color: #111111 !important;
             color: white !important;
             border: 1px solid #333 !important;
         }
         
-        /* 4. Nascondere elementi di Streamlit (Menu, Footer, Header colorato) */
+        /* 4. CORREZIONE HEADER: Non nascondiamo tutto, ma solo la decorazione */
+        
+        /* Nascondi la riga colorata arcobaleno in alto */
+        [data-testid="stDecoration"] {
+            display: none;
+        }
+        
+        /* Rendi lo sfondo dell'header trasparente/nero */
+        header[data-testid="stHeader"] {
+            background-color: transparent !important;
+        }
+
+        /* Nascondi il menu con i tre puntini (opzionale, se vuoi) */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
-        header {visibility: hidden;}
+
+        /* CRUCIALE: Forza il colore della freccetta a BIANCO */
+        [data-testid="stSidebarCollapsedControl"] {
+            color: #FFFFFF !important;
+            display: block !important;
+        }
         
-        /* 5. Personalizzazione Messaggi Chat */
-        /* Utente (Allineato a destra, grigio scuro) */
+        /* Stile messaggi Chat (come prima) */
         [data-testid="stChatMessage"]:nth-child(odd) {
             background-color: #111111;
             border: 1px solid #333;
             border-radius: 10px;
         }
-        
-        /* Assistant (Allineato a sinistra, nero) */
         [data-testid="stChatMessage"]:nth-child(even) {
             background-color: #000000;
-            border: 1px solid #ffffff; /* Bordo bianco per risaltare nel nero */
+            border: 1px solid #ffffff;
             border-radius: 10px;
         }
         
-        /* 6. Bottoni (Radio e standard) */
+        /* Bottoni */
         div[role="radiogroup"] > label > div:first-child {
             background-color: #333 !important;
             border-color: #fff !important;
         }
         </style>
         """, unsafe_allow_html=True)
-    
-
 
 
 # --- 1. SETUP E FUNZIONI UTILI ---
