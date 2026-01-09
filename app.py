@@ -26,29 +26,41 @@ def apply_custom_css():
             border: 1px solid #333 !important;
         }
         
-        /* 4. CORREZIONE HEADER: Non nascondiamo tutto, ma solo la decorazione */
+        /* 4. PULIZIA INTERFACCIA STREAMLIT (Stealth Mode) */
         
-        /* Nascondi la riga colorata arcobaleno in alto */
+        /* Nasconde la Toolbar in alto a destra (Menu hamburger, GitHub icon, etc.) */
+        [data-testid="stToolbar"] {
+            visibility: hidden !important;
+            display: none !important;
+        }
+        
+        /* Nasconde la riga colorata decorativa */
         [data-testid="stDecoration"] {
             display: none;
         }
         
-        /* Rendi lo sfondo dell'header trasparente/nero */
+        /* Nasconde il bottone "Deploy" se visibile */
+        .stDeployButton {
+            display: none;
+        }
+        
+        /* Header trasparente */
         header[data-testid="stHeader"] {
             background-color: transparent !important;
         }
 
-        /* Nascondi il menu con i tre puntini (opzionale, se vuoi) */
-        #MainMenu {visibility: hidden;}
+        /* Nasconde footer "Made with Streamlit" */
         footer {visibility: hidden;}
 
-        /* CRUCIALE: Forza il colore della freccetta a BIANCO */
+        /* 5. GESTIONE FRECCETTA SIDEBAR */
+        /* Fondamentale: Rendiamo visibile SOLO la freccetta per aprire/chiudere la sidebar */
         [data-testid="stSidebarCollapsedControl"] {
-            color: #FFFFFF !important;
             display: block !important;
+            color: #FFFFFF !important;
+            visibility: visible !important;
         }
         
-        /* Stile messaggi Chat (come prima) */
+        /* Stile messaggi Chat */
         [data-testid="stChatMessage"]:nth-child(odd) {
             background-color: #111111;
             border: 1px solid #333;
@@ -60,14 +72,13 @@ def apply_custom_css():
             border-radius: 10px;
         }
         
-        /* Bottoni */
+        /* Radio Buttons */
         div[role="radiogroup"] > label > div:first-child {
             background-color: #333 !important;
             border-color: #fff !important;
         }
         </style>
         """, unsafe_allow_html=True)
-
 
 # --- 1. SETUP E FUNZIONI UTILI ---
 st.set_page_config(page_title="AV Assistant", page_icon="🌱")
