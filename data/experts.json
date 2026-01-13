@@ -69,8 +69,8 @@
     }
   ],
     "disclaimer": {
-      "IT": "🎓 MODALITÀ ESAME: Segui i 10 step del Flowchart. Chiedi [FEEDBACK] alla fine.",
-      "EN": "🎓 EXAM MODE: Follow the 10 Flowchart steps. Ask [FEEDBACK] at the end."
+      "IT": "🎓 MODALITÀ ESAME: Segui i 10 step del Flowchart. Chiedi [FEEDBACK] alla fine. Chiedi [HELP] per avere il protocollo",
+      "EN": "🎓 EXAM MODE: Follow the 10 Flowchart steps. Ask [FEEDBACK] at the end. ASK [HELP] to retrieve protocolo"
     }
 } 
 ]
