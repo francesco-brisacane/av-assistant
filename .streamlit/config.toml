@@ -5,3 +5,6 @@ backgroundColor = "#000000"      # Sfondo principale: Nero assoluto (AV Style)
 secondaryBackgroundColor = "#111111" # Sfondo sidebar/input: Grigio quasi nero
 textColor = "#FFFFFF"            # Testo: Bianco
 font = "sans serif"              # Font pulito
+
+[server]
+headless = true

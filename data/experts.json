@@ -1,0 +1,76 @@
+[
+  {
+    "id": "nutritionist",
+    "icon": "🧬",
+    "label": {
+      "IT": "Nutrizionista Scientifico",
+      "EN": "Scientific Nutritionist"
+    },
+    "prompt_file": "prompts/nutritionist.md",
+    "kb_file": "data/kb_nutrition.txt",
+    "disclaimer": {
+      "IT": "⚠️ DISCLAIMER: Non sono un medico. Info a solo scopo educativo.",
+      "EN": "⚠️ DISCLAIMER: Not a doctor. Educational purpose only."
+    }
+  },
+  {
+    "id": "chef",
+    "icon": "🍳",
+    "label": {
+      "IT": "Coach in Cucina",
+      "EN": "Kitchen Coach"
+    },
+    "prompt_file": "prompts/chef.md",
+    "kb_file": null,
+    "disclaimer": null
+  },
+  {
+    "id": "activist",
+    "icon": "✊",
+    "label": {
+      "IT": "Coach Attivismo (Outreach)",
+      "EN": "Outreach Coach"
+    },
+    "prompt_file": "prompts/activist.md",
+    "kb_file": "data/kb_activist.txt",
+    "disclaimer": {
+        "IT": "Consigli basati sull'approccio socratico di AV.",
+        "EN": "Advice based on AV Socratic method."
+    }
+  },
+  {
+    "id": "protocol_trainer",
+    "icon": "📋",
+    "label": {
+      "IT": "Training Protocollo (Flowchart)",
+      "EN": "Protocol Trainer (Flowchart)"
+    },
+    "prompt_file": "prompts/protocol_trainer.md",
+    "kb_file": null,
+    "settings": [
+      {
+        "key": "difficulty",
+        "type": "selectbox",
+        "label": { "IT": "Livello Difficoltà", "EN": "Difficulty Level" },
+        "options": [
+          {
+            "label": "🟢 Facile (Curioso)",
+            "value": "Sei un passante CURIOSO e APERTO. Fai domande semplici, accetti le risposte logiche e ti lasci guidare."
+          },
+          {
+            "label": "🟡 Medio (Scettico)",
+            "value": "Sei un passante SCETTICO. Fai le obiezioni standard (leoni, piante, proteine). Accetti il punto solo se l'attivista è convincente."
+          },
+          {
+            "label": "🔴 Difficile (Provocatore)",
+            "value": "Sei OSTILE e BENALTRISTA. Cerchi di cambiare discorso, attacchi le fonti, dici che i vegani sono estremi. Non cedere facilmente."
+          }
+        ]
+    }
+  ],
+    "disclaimer": {
+      "IT": "🎓 MODALITÀ ESAME: Segui i 10 step del Flowchart. Chiedi [FEEDBACK] alla fine.",
+      "EN": "🎓 EXAM MODE: Follow the 10 Flowchart steps. Ask [FEEDBACK] at the end."
+    }
+} 
+]

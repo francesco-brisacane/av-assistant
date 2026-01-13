@@ -1,9 +1,7 @@
 import streamlit as st
 from groq import Groq
-import google.generativeai as genai
 import json
 import os
-import re
 
 # --- 1. FUNZIONI DI CARICAMENTO ---
 def load_json(filepath):
@@ -11,9 +9,6 @@ def load_json(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        # Se manca la config dell'app, usiamo default sicuri
-        if "app_config" in filepath:
-            return {"provider": "groq", "model_name": "llama-3.3-70b-versatile", "temperature": 0.6}
         st.error(f"File non trovato: {filepath}")
         return {}
 
@@ -26,11 +21,19 @@ def load_text(filepath):
 def apply_custom_css():
     st.markdown("""
         <style>
-        /* 1. PULIZIA VISIVA */
+        /* 1. PULIZIA VISIVA (Senza toccare l'header!) */
+        stAppToolbar { display: none; }
+        /* Nasconde la riga colorata in alto */
         [data-testid="stDecoration"] { display: none; } 
+        
+        /* Nasconde il menu hamburger a destra e github
+        [data-testid="stToolbar"] { display: none; }  */
+        
+        /* Nasconde il footer */
         footer { display: none; }
 
         /* 2. STILE MESSAGGI */
+        /* Forziamo i colori dei messaggi per coerenza */
         [data-testid="stChatMessage"]:nth-child(odd) { 
             background-color: #111111; 
             border: 1px solid #333; 
@@ -40,7 +43,7 @@ def apply_custom_css():
             border: 1px solid #555; 
         }
 
-        /* 3. INPUT CHAT */
+        /* 3. INPUT CHAT (Opzionale, se config.toml non basta) */
         .stChatInput textarea {
             background-color: #111111 !important;
             color: white !important;
@@ -54,44 +57,27 @@ st.set_page_config(
     page_title="AV Assistant", 
     page_icon="🌱", 
     layout="centered",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded"  # <--- AGGIUNGI QUESTA RIGA
 )
 apply_custom_css()
 
 # Caricamento configurazioni
 UI = load_json("data/ui.json")
 EXPERTS_CONFIG = load_json("data/experts.json")
-APP_CONFIG = load_json("data/app_config.json") # <-- Carichiamo la config del provider
 
-# --- GESTIONE PROVIDER E API KEY ---
-provider = APP_CONFIG.get("provider", "groq").lower()
-model_name = APP_CONFIG.get("model_name", "llama-3.3-70b-versatile")
-
-api_key = None
-client_groq = None
-
-if provider == "groq":
-    try:
-        api_key = st.secrets["GROQ_API_KEY"]
-    except:
-        api_key = st.text_input("Groq API Key (gsk_...)", type="password")
-    
-    if api_key:
-        client_groq = Groq(api_key=api_key)
-
-elif provider == "gemini":
-    try:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-    except:
-        api_key = st.text_input("Google API Key (AIza...)", type="password")
-    
-    if api_key:
-        genai.configure(api_key=api_key)
+# Gestione API Key Groq
+try:
+    api_key = st.secrets["GROQ_API_KEY"]
+except:
+    # Fallback per input manuale se secrets non esiste
+    api_key = st.text_input("Groq API Key (gsk_...)", type="password")
 
 if not api_key:
-    st.warning(f"Inserisci la API Key per {provider.upper()} per continuare.")
+    st.warning("Inserisci la Groq API Key per continuare.")
     st.stop()
 
+# Inizializza Client Groq
+client = Groq(api_key=api_key)
 
 # Gestione Lingua
 query_params = st.query_params
@@ -102,8 +88,7 @@ lang_idx = 0 if lang_code == "IT" else 1
 ui_text = UI.get(lang_code, UI["EN"])
 
 with st.sidebar:
-    if os.path.exists("assets/logo.webp"):
-        st.image("assets/logo.webp", width=80)
+    st.image("assets/logo.webp", width=80)
     
     new_lang = st.selectbox("Language", ["IT", "EN"], index=lang_idx)
     if new_lang != lang_code:
@@ -121,14 +106,27 @@ with st.sidebar:
     selected_label = st.radio(ui_text["select_expert"], list(expert_options.keys()))
     current_expert = expert_options[selected_label]
 
-    # --- RENDER SETTINGS (GENERICO) ---
+# --- 4. RENDER SETTINGS (GENERICO) ---
+    # Questa mappa conterrà le sostituzioni da fare nel prompt (es. {{difficulty}} -> "Sei ostile...")
     prompt_placeholders = {}
+
+    # Se l'esperto ha delle impostazioni extra nel JSON, le creiamo qui
     if "settings" in current_expert:
         st.markdown("---")
         for setting in current_expert["settings"]:
+            # Titolo del widget
             widget_label = setting["label"].get(lang_code, setting["label"]["EN"])
+            
+            # Creiamo le opzioni per il widget
+            # Mappa: "Nome Visualizzato" -> "Valore da iniettare nel prompt"
             opts_map = {opt["label"]: opt["value"] for opt in setting["options"]}
+            
+            # Render del widget (Selectbox)
+            # Usiamo un key univoco per evitare conflitti
             selection = st.selectbox(widget_label, list(opts_map.keys()), key=f"set_{setting['key']}")
+            
+            # Salviamo il valore pronto per essere iniettato
+            # Esempio: prompt_placeholders["{{difficulty}}"] = "Sei un passante ostile..."
             prompt_placeholders[f"{{{{{setting['key']}}}}}"] = opts_map[selection]    
 
     if current_expert.get("disclaimer"):
@@ -152,13 +150,17 @@ if current_expert.get("kb_file"):
     if kb_content:
         final_system_instruction += f"\n\nCONTEXT / KNOWLEDGE BASE:\n{kb_content}"
 
-# Iniezione variabili dinamiche
+# --- INIEZIONE VARIABILI DINAMICHE ---
+# Qui applichiamo le scelte fatte nella sidebar (es. Difficulty) al testo del prompt
 for key, value in prompt_placeholders.items():
     final_system_instruction = final_system_instruction.replace(key, value)
     
+# Se nel prompt ci sono ancora placeholder non sostituiti (perché magari l'utente non ha settings), li puliamo
+# Questo evita che nel prompt rimanga scritto "{{difficulty}}"
+import re
 final_system_instruction = re.sub(r"\{\{.*?\}\}", "", final_system_instruction)        
 
-# --- 5. CHAT ENGINE (MULTI-PROVIDER) ---
+# --- 5. CHAT ENGINE (GROQ VERSION) ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -183,55 +185,34 @@ if prompt := st.chat_input(placeholder):
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # Costruzione Payload per Llama 3
+    # 1. Messaggio di sistema
+    messages_payload = [{"role": "system", "content": final_system_instruction}]
+    # 2. Storia della chat
+    messages_payload.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages])
+
     with st.chat_message("assistant"):
         stream_box = st.empty()
         full_res = ""
         
         try:
-            # === LOGICA GROQ ===
-            if provider == "groq":
-                messages_payload = [{"role": "system", "content": final_system_instruction}]
-                messages_payload.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages])
-                
-                completion = client_groq.chat.completions.create(
-                    model=model_name, 
-                    messages=messages_payload,
-                    temperature=APP_CONFIG.get("temperature", 0.6),
-                    max_tokens=1024,
-                    stream=True,
-                )
+            # Chiamata a Groq (Llama 3.3 70B Versatile è ottimo e gratis)
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile", 
+                messages=messages_payload,
+                temperature=0.6,
+                max_tokens=1024,
+                stream=True,
+                stop=None,
+            )
 
-                for chunk in completion:
-                    if chunk.choices[0].delta.content:
-                        content = chunk.choices[0].delta.content
-                        full_res += content
-                        stream_box.markdown(full_res)
-
-            # === LOGICA GEMINI ===
-            elif provider == "gemini":
-                # Configura il modello con il system prompt
-                model = genai.GenerativeModel(
-                    model_name=model_name,
-                    system_instruction=final_system_instruction
-                )
-                
-                # Conversione History: Gemini vuole [{"role": "user"|"model", "parts": ["text"]}]
-                # Nota: Escludiamo l'ultimo messaggio (il prompt attuale) perché Gemini lo vuole nel metodo send_message
-                gemini_history = []
-                for msg in st.session_state.messages[:-1]:
-                    role = "user" if msg["role"] == "user" else "model"
-                    gemini_history.append({"role": role, "parts": [msg["content"]]})
-                
-                chat = model.start_chat(history=gemini_history)
-                response = chat.send_message(prompt, stream=True)
-                
-                for chunk in response:
-                    if chunk.text:
-                        full_res += chunk.text
-                        stream_box.markdown(full_res)
-
-            # Salvataggio risposta
+            for chunk in completion:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    full_res += content
+                    stream_box.markdown(full_res)
+            
             st.session_state.messages.append({"role": "assistant", "content": full_res})
             
         except Exception as e:
-            st.error(f"Errore {provider.upper()}: {e}")
+            st.error(f"Errore Groq: {e}")
