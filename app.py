@@ -1,6 +1,7 @@
 import streamlit as st
 from groq import Groq
 import google.generativeai as genai
+from openai import OpenAI  # <--- NEW: Libreria standard per OpenRouter
 import json
 import os
 import re
@@ -11,7 +12,7 @@ def load_json(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        # Se manca la config dell'app, usiamo default sicuri
+        # Default di sicurezza
         if "app_config" in filepath:
             return {"provider": "groq", "model_name": "llama-3.3-70b-versatile", "temperature": 0.6}
         st.error(f"File non trovato: {filepath}")
@@ -61,7 +62,7 @@ apply_custom_css()
 # Caricamento configurazioni
 UI = load_json("data/ui.json")
 EXPERTS_CONFIG = load_json("data/experts.json")
-APP_CONFIG = load_json("data/app_config.json") # <-- Carichiamo la config del provider
+APP_CONFIG = load_json("data/app_config.json") 
 
 # --- GESTIONE PROVIDER E API KEY ---
 provider = APP_CONFIG.get("provider", "groq").lower()
@@ -69,7 +70,9 @@ model_name = APP_CONFIG.get("model_name", "llama-3.3-70b-versatile")
 
 api_key = None
 client_groq = None
+client_openrouter = None # <--- NEW
 
+# LOGICA DI INIZIALIZZAZIONE CLIENT
 if provider == "groq":
     try:
         api_key = st.secrets["GROQ_API_KEY"]
@@ -87,6 +90,24 @@ elif provider == "gemini":
     
     if api_key:
         genai.configure(api_key=api_key)
+
+# --- NEW: LOGICA OPENROUTER ---
+elif provider == "openrouter":
+    try:
+        api_key = st.secrets["OPENROUTER_API_KEY"]
+    except:
+        api_key = st.text_input("OpenRouter API Key (sk-or-...)", type="password")
+    
+    if api_key:
+        # OpenRouter usa la libreria OpenAI ma con un Base URL diverso
+        client_openrouter = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+            default_headers={
+                "HTTP-Referer": "https://av-assistant.streamlit.app", # Opzionale: per le statistiche
+                "X-Title": "AV Assistant"
+            }
+        )
 
 if not api_key:
     st.warning(f"Inserisci la API Key per {provider.upper()} per continuare.")
@@ -207,16 +228,36 @@ if prompt := st.chat_input(placeholder):
                         full_res += content
                         stream_box.markdown(full_res)
 
+            # === NEW: LOGICA OPENROUTER ===
+            # OpenRouter usa lo stesso formato messaggi di Groq/OpenAI
+            elif provider == "openrouter":
+                messages_payload = [{"role": "system", "content": final_system_instruction}]
+                messages_payload.extend([{"role": m["role"], "content": m["content"]} for m in st.session_state.messages])
+                
+                completion = client_openrouter.chat.completions.create(
+                    model=model_name, 
+                    messages=messages_payload,
+                    temperature=APP_CONFIG.get("temperature", 0.6),
+                    # Opzionali per OpenRouter
+                    # top_p=1,
+                    # frequency_penalty=0,
+                    # presence_penalty=0,
+                    stream=True,
+                )
+
+                for chunk in completion:
+                    if chunk.choices[0].delta.content:
+                        content = chunk.choices[0].delta.content
+                        full_res += content
+                        stream_box.markdown(full_res)
+
             # === LOGICA GEMINI ===
             elif provider == "gemini":
-                # Configura il modello con il system prompt
                 model = genai.GenerativeModel(
                     model_name=model_name,
                     system_instruction=final_system_instruction
                 )
                 
-                # Conversione History: Gemini vuole [{"role": "user"|"model", "parts": ["text"]}]
-                # Nota: Escludiamo l'ultimo messaggio (il prompt attuale) perché Gemini lo vuole nel metodo send_message
                 gemini_history = []
                 for msg in st.session_state.messages[:-1]:
                     role = "user" if msg["role"] == "user" else "model"
