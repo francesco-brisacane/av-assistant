@@ -3,6 +3,10 @@ from groq import Groq
 import google.generativeai as genai
 from openai import OpenAI  # <--- NEW: Libreria standard per OpenRouter
 import json
+import extra_streamlit_components as stx
+import uuid
+import time
+import datetime
 import os
 import re
 
@@ -23,6 +27,41 @@ def load_text(filepath):
         return ""
     with open(filepath, "r", encoding="utf-8") as f:
         return f.read()
+
+# --- 1.1 STORAGE FUNCTIONS ---
+HISTORY_DIR = "history"
+if not os.path.exists(HISTORY_DIR):
+    os.makedirs(HISTORY_DIR)
+
+def save_chat_to_server(user_id, current_expert_id):
+    settings = {k: v for k, v in st.session_state.items() if k.startswith("set_")}
+    
+    data = {
+        "timestamp": time.time(),
+        "messages": st.session_state.messages,
+        "expert_id": current_expert_id,
+        "settings": settings
+    }
+    
+    file_path = os.path.join(HISTORY_DIR, f"{user_id}.json")
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+
+def load_chat_from_server(user_id):
+    file_path = os.path.join(HISTORY_DIR, f"{user_id}.json")
+    print(f"DEBUG: Tring to load from {file_path}")
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                print(f"DEBUG: Loaded {len(data.get('messages', []))} messages.")
+                return data
+        except Exception as e:
+            print(f"DEBUG: Error loading json: {e}")
+            return None
+    else:
+        print("DEBUG: File not found.")
+    return None
     
 def apply_custom_css():
     st.markdown("""
@@ -64,54 +103,65 @@ UI = load_json("data/ui.json")
 EXPERTS_CONFIG = load_json("data/experts.json")
 APP_CONFIG = load_json("data/app_config.json") 
 
-# --- GESTIONE PROVIDER E API KEY ---
-provider = APP_CONFIG.get("provider", "groq").lower()
-model_name = APP_CONFIG.get("model_name", "llama-3.3-70b-versatile")
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-api_key = None
-client_groq = None
-client_openrouter = None # <--- NEW
+# --- 2.1 COOKIE & SESSION MANAGEMENT ---
+cookie_manager = stx.CookieManager(key="cookie_manager")
+uuid_cookie = cookie_manager.get(cookie="av_user_id")
 
-# LOGICA DI INIZIALIZZAZIONE CLIENT
-if provider == "groq":
-    try:
-        api_key = st.secrets["GROQ_API_KEY"]
-    except:
-        api_key = st.text_input("Groq API Key (gsk_...)", type="password")
+print(f"DEBUG: Cookie read result: {uuid_cookie} (Type: {type(uuid_cookie)})")
+
+if uuid_cookie:
+    print(f"DEBUG: Using existing cookie: {uuid_cookie}")
+    st.session_state['user_id'] = uuid_cookie
     
-    if api_key:
-        client_groq = Groq(api_key=api_key)
-
-elif provider == "gemini":
-    try:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-    except:
-        api_key = st.text_input("Google API Key (AIza...)", type="password")
+    # Check consistency: Cookie exists, but does file exist?
+    if not os.path.exists(os.path.join(HISTORY_DIR, f"{uuid_cookie}.json")):
+        print(f"DEBUG: File for cookie {uuid_cookie} missing. Re-creating empty file.")
+        save_chat_to_server(uuid_cookie, EXPERTS_CONFIG[0]["id"])
+else:
+    print("DEBUG: Cookie not found or None.")
+    # Se il cookie non c'è, controlliamo se dobbiamo aspettare
+    if "cookie_init_done" not in st.session_state:
+        st.session_state["cookie_init_done"] = True
+        print("DEBUG: Performing initial rerun for cookie manager...")
+        time.sleep(0.5) 
+        st.rerun()
+        
+    # Se siamo qui, dopo il rerun il cookie è ancora assente. Creiamone uno nuovo.
+    new_uuid = str(uuid.uuid4())
+    print(f"DEBUG: Generating NEW UUID: {new_uuid}")
     
-    if api_key:
-        genai.configure(api_key=api_key)
-
-# --- NEW: LOGICA OPENROUTER ---
-elif provider == "openrouter":
-    try:
-        api_key = st.secrets["OPENROUTER_API_KEY"]
-    except:
-        api_key = st.text_input("OpenRouter API Key (sk-or-...)", type="password")
+    # Imposta cookie
+    expires = datetime.datetime.now() + datetime.timedelta(days=30)
+    cookie_manager.set("av_user_id", new_uuid, expires_at=expires)
     
-    if api_key:
-        # OpenRouter usa la libreria OpenAI ma con un Base URL diverso
-        client_openrouter = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=api_key,
-            default_headers={
-                "HTTP-Referer": "https://av-assistant.streamlit.app", # Opzionale: per le statistiche
-                "X-Title": "AV Assistant"
-            }
-        )
+    st.session_state['user_id'] = new_uuid
+    
+    # Create empty file for new user immediately
+    save_chat_to_server(new_uuid, EXPERTS_CONFIG[0]["id"]) 
 
-if not api_key:
-    st.warning(f"Inserisci la API Key per {provider.upper()} per continuare.")
-    st.stop()
+user_id = st.session_state['user_id']
+
+# --- STATE RESTORATION ---
+# Se la chat è vuota, prova a recuperare dal server
+if not st.session_state.messages:
+    saved_data = load_chat_from_server(user_id)
+    if saved_data:
+        st.session_state.messages = saved_data.get("messages", [])
+        st.session_state.restored_expert_id = saved_data.get("expert_id")
+        
+        # Restore settings
+        saved_settings = saved_data.get("settings", {})
+        for k, v in saved_settings.items():
+            st.session_state[k] = v
+
+
+
+# Configurazione globale (fallback)
+global_provider = APP_CONFIG.get("provider", "groq").lower()
+global_model = APP_CONFIG.get("model_name", "llama-3.3-70b-versatile")
 
 
 # Gestione Lingua
@@ -126,6 +176,8 @@ with st.sidebar:
     if os.path.exists("assets/logo.webp"):
         st.image("assets/logo.webp", width=80)
     
+
+
     new_lang = st.selectbox("Language", ["IT", "EN"], index=lang_idx)
     if new_lang != lang_code:
         st.query_params["lang"] = new_lang
@@ -139,7 +191,18 @@ with st.sidebar:
         label = f"{exp['icon']} {exp['label'][lang_code]}"
         expert_options[label] = exp
 
-    selected_label = st.radio(ui_text["select_expert"], list(expert_options.keys()))
+    
+    # Determine default index based on restored state
+    default_index = 0
+    expert_keys = list(expert_options.keys())
+    
+    if "restored_expert_id" in st.session_state:
+        for idx, (label, exp) in enumerate(expert_options.items()):
+            if exp["id"] == st.session_state.restored_expert_id:
+                default_index = idx
+                break
+
+    selected_label = st.radio(ui_text["select_expert"], expert_keys, index=default_index)
     current_expert = expert_options[selected_label]
 
     # --- RENDER SETTINGS (GENERICO) ---
@@ -159,7 +222,62 @@ with st.sidebar:
 
     if st.button(ui_text["clear_chat"]):
         st.session_state.messages = []
+        save_chat_to_server(user_id, current_expert["id"])
         st.rerun()
+
+# --- GESTIONE PROVIDER E MODELLO (PER ESPERTO) ---
+# Priorità: 1. Configurazione Esperto -> 2. Configurazione Globale
+provider = current_expert.get("provider", global_provider).lower()
+model_name = current_expert.get("model_name", global_model)
+
+api_key = None
+client_groq = None
+client_openrouter = None
+
+# LOGICA DI INIZIALIZZAZIONE CLIENT (Dinamica)
+if provider == "groq":
+    try:
+        api_key = st.secrets.get("GROQ_API_KEY")
+    except:
+        pass
+    if not api_key:
+        api_key = st.sidebar.text_input("Groq API Key (gsk_...)", type="password")
+    
+    if api_key:
+        client_groq = Groq(api_key=api_key)
+
+elif provider == "gemini":
+    try:
+        api_key = st.secrets.get("GOOGLE_API_KEY")
+    except:
+        pass
+    if not api_key:
+        api_key = st.sidebar.text_input("Google API Key (AIza...)", type="password")
+    
+    if api_key:
+        genai.configure(api_key=api_key)
+
+elif provider == "openrouter":
+    try:
+        api_key = st.secrets.get("OPENROUTER_API_KEY")
+    except:
+        pass
+    if not api_key:
+        api_key = st.sidebar.text_input("OpenRouter API Key (sk-or-...)", type="password")
+    
+    if api_key:
+        client_openrouter = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+            default_headers={
+                "HTTP-Referer": "https://av-assistant.streamlit.app",
+                "X-Title": "AV Assistant"
+            }
+        )
+
+if not api_key:
+    st.warning(f"⚠️ {ui_text.get('api_key_required', 'API Key required')} ({provider.upper()})")
+    st.stop()
 
 # --- 4. COSTRUZIONE PROMPT ---
 st.title(selected_label)
@@ -273,6 +391,9 @@ if prompt := st.chat_input(placeholder):
 
             # Salvataggio risposta
             st.session_state.messages.append({"role": "assistant", "content": full_res})
+            
+            # --- SAVE STATE ---
+            save_chat_to_server(user_id, current_expert["id"])
             
         except Exception as e:
             st.error(f"Errore {provider.upper()}: {e}")

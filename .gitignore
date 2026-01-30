@@ -24,3 +24,5 @@ env/
 # --- DATA (Opzionale) ---
 # Se in futuro avrai file pdf pesanti che non vuoi su GitHub, scommenta:
 # data/*.pdf
+# --- APPLICATION DATA ---
+history/

@@ -8,6 +8,8 @@
     },
     "prompt_file": "prompts/nutritionist.md",
     "kb_file": "data/kb_nutrition.txt",
+    "provider": "groq",
+    "model_name": "llama-3.3-70b-versatile",
     "disclaimer": {
       "IT": "⚠️ DISCLAIMER: Non sono un medico. Info a solo scopo educativo.",
       "EN": "⚠️ DISCLAIMER: Not a doctor. Educational purpose only."
@@ -33,9 +35,11 @@
     },
     "prompt_file": "prompts/activist.md",
     "kb_file": "data/kb_activist.txt",
+    "provider": "groq",
+    "model_name": "llama-3.3-70b-versatile",
     "disclaimer": {
-        "IT": "Consigli basati sull'approccio socratico di AV.",
-        "EN": "Advice based on AV Socratic method."
+      "IT": "Consigli basati sull'approccio socratico di AV.",
+      "EN": "Advice based on AV Socratic method."
     }
   },
   {
@@ -51,7 +55,10 @@
       {
         "key": "difficulty",
         "type": "selectbox",
-        "label": { "IT": "Livello Difficoltà", "EN": "Difficulty Level" },
+        "label": {
+          "IT": "Livello Difficoltà",
+          "EN": "Difficulty Level"
+        },
         "options": [
           {
             "label": "🟢 Facile (Curioso)",
@@ -66,11 +73,11 @@
             "value": "Sei OSTILE e BENALTRISTA. Cerchi di cambiare discorso, attacchi le fonti, dici che i vegani sono estremi. Non cedere facilmente."
           }
         ]
-    }
-  ],
+      }
+    ],
     "disclaimer": {
       "IT": "🎓 MODALITÀ ESAME: Segui i 10 step del Flowchart. Chiedi [FEEDBACK] alla fine. Chiedi [HELP] per avere il protocollo",
       "EN": "🎓 EXAM MODE: Follow the 10 Flowchart steps. Ask [FEEDBACK] at the end. ASK [HELP] to retrieve protocolo"
     }
-} 
+  }
 ]

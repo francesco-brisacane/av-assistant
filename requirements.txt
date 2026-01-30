@@ -2,3 +2,5 @@ streamlit
 google-generativeai
 groq
 openai
+extra-streamlit-components
+uuid
