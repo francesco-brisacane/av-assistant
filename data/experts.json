@@ -13,8 +13,7 @@
     "disclaimer": {
       "IT": "⚠️ DISCLAIMER: Non sono un medico. Info a solo scopo educativo.",
       "EN": "⚠️ DISCLAIMER: Not a doctor. Educational purpose only."
-    },
-    "authorizedOnly": false
+    }
   },
   {
     "id": "chef",
@@ -25,8 +24,7 @@
     },
     "prompt_file": "prompts/chef.md",
     "kb_file": null,
-    "disclaimer": null,
-    "authorizedOnly": false
+    "disclaimer": null
   },
   {
     "id": "activist",
@@ -42,8 +40,7 @@
     "disclaimer": {
       "IT": "Consigli basati sull'approccio socratico di AV.",
       "EN": "Advice based on AV Socratic method."
-    },
-    "authorizedOnly": false
+    }
   },
   {
     "id": "protocol_trainer",
@@ -82,6 +79,10 @@
       "IT": "🎓 MODALITÀ ESAME: Segui i 10 step del Flowchart. Chiedi [FEEDBACK] alla fine. Chiedi [HELP] per avere il protocollo",
       "EN": "🎓 EXAM MODE: Follow the 10 Flowchart steps. Ask [FEEDBACK] at the end. ASK [HELP] to retrieve protocolo"
     },
-    "authorizedOnly": false
+    "authorizedProfiles": [
+      "admin",
+      "org",
+      "activist"
+    ]
   }
 ]
