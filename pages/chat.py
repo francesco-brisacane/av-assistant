@@ -465,10 +465,25 @@ def log_profiled_chat():
             "messaggio": m.get("content")
         })
         
+    # Cerchiamo nome e cognome dell'utente
+    u_nome = ""
+    u_cognome = ""
+    try:
+        user_doc_ref = db.collection("users").document(user_email)
+        user_doc = user_doc_ref.get()
+        if user_doc.exists:
+            u_data = user_doc.to_dict()
+            u_nome = u_data.get("nome", "")
+            u_cognome = u_data.get("cognome", "")
+    except Exception as e:
+        print(f"DEBUG: Could not fetch user data for chat profile: {e}")
+        
     payload = {
         "id": chat_id,
         "data_creazione_chat": first_msg_date,
         "email": user_email,
+        "nome": u_nome,
+        "cognome": u_cognome,
         "esperto": current_expert["id"],
         "messages": formatted_msgs
     }

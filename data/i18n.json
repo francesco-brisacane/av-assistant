@@ -33,8 +33,19 @@
         "btn_cancel": "Cancel",
         "delete_success": "Activist successfully deleted!",
         "select_to_delete": "Select rows in the table, then click the delete button.",
+        "select_to_delete": "Select rows in the table, then click the delete button.",
         "delete_selected_btn": "Delete {count} Selected",
-        "delete_selected_confirm": "Are you sure you want to permanently delete {count} selected activists?"
+        "delete_selected_confirm": "Are you sure you want to permanently delete {count} selected activists?",
+        "menu_chat_viewer": "Activist Chats",
+        "page_title_chats": "Chats from your Activists",
+        "chat_viewer_desc": "Review conversations managed by the activists in your chapter.",
+        "no_chats_found": "No chats found for your activists.",
+        "table_chat_date": "Date",
+        "table_chat_expert": "Expert",
+        "view_chat": "View Chat",
+        "filter_all_activists": "All Activists",
+        "filter_label": "Filter by Activist",
+        "you": "You"
     },
     "IT": {
         "login_required": "Devi effettuare il login per accedere a questa pagina.",
@@ -70,7 +81,18 @@
         "btn_cancel": "Annulla",
         "delete_success": "Attivista eliminato con successo!",
         "select_to_delete": "Seleziona le righe nella tabella, poi clicca il pulsante di eliminazione.",
+        "select_to_delete": "Seleziona le righe nella tabella, poi clicca il pulsante di eliminazione.",
         "delete_selected_btn": "Elimina {count} Selezionati",
-        "delete_selected_confirm": "Sei sicuro di voler eliminare definitivamente {count} attivisti selezionati?"
+        "delete_selected_confirm": "Sei sicuro di voler eliminare definitivamente {count} attivisti selezionati?",
+        "menu_chat_viewer": "Chat Attivisti",
+        "page_title_chats": "Chat dei tuoi Attivisti",
+        "chat_viewer_desc": "Revisiona le conversazioni gestite dagli attivisti del tuo capitolo.",
+        "no_chats_found": "Nessuna chat trovata per i tuoi attivisti.",
+        "table_chat_date": "Data",
+        "table_chat_expert": "Esperto",
+        "view_chat": "Vedi Chat",
+        "filter_all_activists": "Tutti gli attivisti",
+        "filter_label": "Filtra per Attivista",
+        "you": "Tu"
     }
 }

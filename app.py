@@ -23,6 +23,7 @@ current_i18n = I18N.get(lang_code, I18N["EN"])
 chat_page = st.Page("pages/chat.py", title=current_i18n.get("menu_chat", "Chat"), icon="💬", default=True)
 activists_page = st.Page("pages/1_I_Miei_Attivisti.py", title=current_i18n.get("menu_activists", "My Activists"), icon="👥")
 organizers_page = st.Page("pages/2_Gestione_Organizzatori.py", title=current_i18n.get("menu_organizers", "Manage Organizers"), icon="⚙️")
+chat_viewer_page = st.Page("pages/3_Chat_Attivisti.py", title=current_i18n.get("menu_chat_viewer", "Chat Attivisti"), icon="📑")
 
 # Determine visibility based on user profiles
 user_profiles = st.session_state.get("user_profiles", [])
@@ -40,6 +41,8 @@ if is_logged_in:
         pages.append(activists_page)
     if "admin" in user_profiles:
         pages.append(organizers_page)
+    if "org" in user_profiles:
+        pages.append(chat_viewer_page)
 
 pg = st.navigation(pages)
 pg.run()
