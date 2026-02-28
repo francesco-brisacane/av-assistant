@@ -9,6 +9,8 @@ import time
 import datetime
 import os
 import re
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 # --- 1. FUNZIONI DI CARICAMENTO ---
 def load_json(filepath):
@@ -28,10 +30,20 @@ def load_text(filepath):
     with open(filepath, "r", encoding="utf-8") as f:
         return f.read()
 
-# --- 1.1 STORAGE FUNCTIONS ---
-HISTORY_DIR = "history"
-if not os.path.exists(HISTORY_DIR):
-    os.makedirs(HISTORY_DIR)
+# --- 1.1 FIREBASE INITIALIZATION ---
+if not firebase_admin._apps:
+    try:
+        fb_creds = dict(st.secrets["firebase"])
+        if "\\n" in fb_creds["private_key"]:
+             fb_creds["private_key"] = fb_creds["private_key"].replace("\\n", "\n")
+        
+        cred = credentials.Certificate(fb_creds)
+        firebase_admin.initialize_app(cred)
+    except Exception as e:
+        st.error(f"Errore inizializzazione Firebase: {e}")
+
+db = firestore.client()
+CHATS_COLLECTION = "active_chats"
 
 def save_chat_to_server(user_id, current_expert_id):
     settings = {k: v for k, v in st.session_state.items() if k.startswith("set_")}
@@ -43,24 +55,25 @@ def save_chat_to_server(user_id, current_expert_id):
         "settings": settings
     }
     
-    file_path = os.path.join(HISTORY_DIR, f"{user_id}.json")
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
+    try:
+        doc_ref = db.collection(CHATS_COLLECTION).document(user_id)
+        doc_ref.set(data)
+    except Exception as e:
+        print(f"DEBUG: Error saving to Firebase: {e}")
 
 def load_chat_from_server(user_id):
-    file_path = os.path.join(HISTORY_DIR, f"{user_id}.json")
-    print(f"DEBUG: Tring to load from {file_path}")
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                print(f"DEBUG: Loaded {len(data.get('messages', []))} messages.")
-                return data
-        except Exception as e:
-            print(f"DEBUG: Error loading json: {e}")
-            return None
-    else:
-        print("DEBUG: File not found.")
+    print(f"DEBUG: Tring to load from Firebase collection {CHATS_COLLECTION}, doc {user_id}")
+    try:
+        doc_ref = db.collection(CHATS_COLLECTION).document(user_id)
+        doc = doc_ref.get()
+        if doc.exists:
+            data = doc.to_dict()
+            print(f"DEBUG: Loaded {len(data.get('messages', []))} messages.")
+            return data
+        else:
+            print("DEBUG: Document not found in Firebase.")
+    except Exception as e:
+        print(f"DEBUG: Error loading from Firebase: {e}")
     return None
     
 def apply_custom_css():
@@ -116,10 +129,15 @@ if uuid_cookie:
     print(f"DEBUG: Using existing cookie: {uuid_cookie}")
     st.session_state['user_id'] = uuid_cookie
     
-    # Check consistency: Cookie exists, but does file exist?
-    if not os.path.exists(os.path.join(HISTORY_DIR, f"{uuid_cookie}.json")):
-        print(f"DEBUG: File for cookie {uuid_cookie} missing. Re-creating empty file.")
-        save_chat_to_server(uuid_cookie, EXPERTS_CONFIG[0]["id"])
+    # Check consistency: Cookie exists, but does document exist?
+    doc_ref = db.collection(CHATS_COLLECTION).document(uuid_cookie)
+    if not doc_ref.get().exists:
+        print(f"DEBUG: Document for cookie {uuid_cookie} missing. Re-creating.")
+        if EXPERTS_CONFIG:
+            save_chat_to_server(uuid_cookie, EXPERTS_CONFIG[0]["id"])
+        else:
+            st.error("Configurazione esperti mancante.")
+            st.stop()
 else:
     print("DEBUG: Cookie not found or None.")
     # Se il cookie non c'è, controlliamo se dobbiamo aspettare
@@ -139,8 +157,12 @@ else:
     
     st.session_state['user_id'] = new_uuid
     
-    # Create empty file for new user immediately
-    save_chat_to_server(new_uuid, EXPERTS_CONFIG[0]["id"]) 
+    # Create document for new user immediately
+    if EXPERTS_CONFIG:
+        save_chat_to_server(new_uuid, EXPERTS_CONFIG[0]["id"]) 
+    else:
+        st.error("Configurazione esperti mancante.")
+        st.stop()
 
 user_id = st.session_state['user_id']
 
@@ -184,12 +206,47 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
+
+    # --- GOOGLE AUTHENTICATION ---
+    # DEBUG SEZIONE
+    # st.sidebar.write(f"DEBUG Auth Object: {st.user}")
+    # st.sidebar.write(f"DEBUG Auth Email: {getattr(st.user, 'email', 'N/A')}")
     
-    # Mappa Esperti
+    # Check for login status (st.user in 1.42+ handles this)
+    try:
+        is_logged_in = st.user.is_logged_in
+    except AttributeError:
+        # Fallback for older/different versions
+        is_logged_in = st.user.get("email") is not None if hasattr(st.user, "get") else False
+
+    if "code" in st.query_params and not is_logged_in:
+        st.sidebar.warning("Autenticazione in corso... ricarica se bloccato.")
+        if st.sidebar.button("Ricarica Forza"):
+            st.rerun()
+
+    if not is_logged_in:
+        if st.button("🔑 Login with Google", use_container_width=True):
+            st.login("google")
+    else:
+        user_email = getattr(st.user, 'email', 'User')
+        st.write(f"Logged in as: **{user_email}**")
+        if st.button("🚪 Logout", use_container_width=True):
+            st.logout()
+
+    st.markdown("---")
+    
+    # Mappa Esperti (filtrata per autenticazione)
     expert_options = {}
+    
     for exp in EXPERTS_CONFIG:
-        label = f"{exp['icon']} {exp['label'][lang_code]}"
-        expert_options[label] = exp
+        # Se l'esperto è publico O l'utente è autenticato
+        if not exp.get("authorizedOnly", False) or is_logged_in:
+            label = f"{exp['icon']} {exp['label'][lang_code]}"
+            expert_options[label] = exp
+
+    if not expert_options:
+        st.warning("Nessun esperto disponibile.")
+        st.stop()
 
     
     # Determine default index based on restored state
@@ -341,7 +398,7 @@ if prompt := st.chat_input(placeholder):
                 )
 
                 for chunk in completion:
-                    if chunk.choices[0].delta.content:
+                    if chunk.choices and chunk.choices[0].delta.content:
                         content = chunk.choices[0].delta.content
                         full_res += content
                         stream_box.markdown(full_res)
@@ -364,7 +421,7 @@ if prompt := st.chat_input(placeholder):
                 )
 
                 for chunk in completion:
-                    if chunk.choices[0].delta.content:
+                    if chunk.choices and chunk.choices[0].delta.content:
                         content = chunk.choices[0].delta.content
                         full_res += content
                         stream_box.markdown(full_res)

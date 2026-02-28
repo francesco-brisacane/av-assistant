@@ -4,3 +4,5 @@ groq
 openai
 extra-streamlit-components
 uuid
+firebase-admin
+Authlib>=1.3.2
