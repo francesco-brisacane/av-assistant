@@ -281,9 +281,9 @@ with st.sidebar:
     
     user_profiles = st.session_state.get("user_profiles", []) if is_logged_in else []
     
-    # Hide navigation if not org/admin
+    # Hide navigation if not org/admin/activist
     can_see_nav = False
-    if is_logged_in and ("org" in user_profiles or "admin" in user_profiles):
+    if is_logged_in and ("org" in user_profiles or "admin" in user_profiles or "activist" in user_profiles):
         can_see_nav = True
         
     if not can_see_nav:

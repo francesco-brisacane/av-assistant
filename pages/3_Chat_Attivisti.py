@@ -46,8 +46,8 @@ if not is_logged_in:
 user_email = getattr(st.user, 'email', None)
 user_profiles = st.session_state.get("user_profiles", [])
 
-if "org" not in user_profiles:
-    st.error(current_i18n.get("access_denied", "Accesso negato. Questa pagina è riservata agli organizer."))
+if "org" not in user_profiles and "activist" not in user_profiles:
+    st.error(current_i18n.get("access_denied", "Accesso negato. Questa pagina è riservata agli organizer e agli attivisti."))
     st.stop()
 
 # 2. INIZIALIZZAZIONE FIREBASE E DB
@@ -59,67 +59,91 @@ ORGANIZERS_COLLECTION = "organizers"
 PROFILED_CHATS_COLLECTION = "profiled_chats"
 
 # 3. UI PRINCIPALE
-st.title(current_i18n.get("page_title_chats", "Chat dei tuoi Attivisti"))
-st.write(current_i18n.get("chat_viewer_desc", "Revisiona le conversazioni gestite dagli attivisti del tuo capitolo."))
+if "org" in user_profiles:
+    st.title(current_i18n.get("page_title_chats", "Chat dei tuoi Attivisti"))
+    st.write(current_i18n.get("chat_viewer_desc", "Revisiona le conversazioni gestite dagli attivisti del tuo capitolo."))
+else:
+    st.title(current_i18n.get("page_title_chats_activist", "Le tue Chat"))
+    
 st.markdown("---")
 
 apply_custom_chat_css()
 
-# 4. FETCH DATI
-# Dobbiamo prima recuperare le email appartenenti agli attivisti di questo organizer
+# 4. FETCH DATI E UI FILTRI
 activist_emails = []
 activist_map = {} # mappa email -> Nome Cognome
-doc_ref = db.collection(ORGANIZERS_COLLECTION).document(user_email)
-doc = doc_ref.get()
+search_emails = []
 
-if doc.exists:
-    data = doc.to_dict()
-    activists = data.get("activists", [])
-    for act in activists:
-        email = act.get("email", "")
-        if email:
-            activist_emails.append(email)
-            name_str = f"{act.get('nome', '')} {act.get('cognome', '')}".strip()
-            activist_map[email] = name_str if name_str else email
+if "org" in user_profiles:
+    # --- LOGICA PER ORGANIZER ---
+    doc_ref = db.collection(ORGANIZERS_COLLECTION).document(user_email)
+    doc = doc_ref.get()
 
-# Aggiungiamo anche l'organizzatore stesso per fargli vedere le proprie chat
-try:
-    user_doc = db.collection("users").document(user_email).get()
-    lbl_you = current_i18n.get("you", "Tu")
-    if user_doc.exists:
-        u_data = user_doc.to_dict()
-        org_name = f"{u_data.get('nome', '')} {u_data.get('cognome', '')}".strip()
-        activist_emails.append(user_email)
-        activist_map[user_email] = f"{org_name} ({lbl_you})" if org_name else f"{user_email} ({lbl_you})"
-    else:
+    if doc.exists:
+        data = doc.to_dict()
+        activists = data.get("activists", [])
+        for act in activists:
+            email = act.get("email", "")
+            if email:
+                activist_emails.append(email)
+                name_str = f"{act.get('nome', '')} {act.get('cognome', '')}".strip()
+                activist_map[email] = name_str if name_str else email
+
+    # Aggiungiamo anche l'organizzatore stesso per fargli vedere le proprie chat
+    try:
+        user_doc = db.collection("users").document(user_email).get()
+        lbl_you = current_i18n.get("you", "Tu")
+        if user_doc.exists:
+            u_data = user_doc.to_dict()
+            org_name = f"{u_data.get('nome', '')} {u_data.get('cognome', '')}".strip()
+            activist_emails.append(user_email)
+            activist_map[user_email] = f"{org_name} ({lbl_you})" if org_name else f"{user_email} ({lbl_you})"
+        else:
+            activist_emails.append(user_email)
+            activist_map[user_email] = f"{user_email} ({lbl_you})"
+    except Exception as e:
+        lbl_you = current_i18n.get("you", "Tu")
         activist_emails.append(user_email)
         activist_map[user_email] = f"{user_email} ({lbl_you})"
-except Exception as e:
-    lbl_you = current_i18n.get("you", "Tu")
-    activist_emails.append(user_email)
-    activist_map[user_email] = f"{user_email} ({lbl_you})"
 
-if not activist_emails:
-    st.info(current_i18n.get("no_chats_found", "Nessuna chat trovata per i tuoi attivisti."))
-    st.stop()
+    if not activist_emails:
+        st.info(current_i18n.get("no_chats_found", "Nessuna chat trovata per i tuoi attivisti."))
+        st.stop()
 
-# 4.1 UI FILTRI
-# Opzione di base "Tutti"
-lbl_all = current_i18n.get("filter_all_activists", "Tutti gli attivisti")
-filter_options = [lbl_all] + list(activist_map.values())
-filter_email_map = {lbl_all: "ALL"}
-for e, n in activist_map.items():
-    filter_email_map[n] = e
+    # Opzione di base "Tutti" per la combobox
+    lbl_all = current_i18n.get("filter_all_activists", "Tutti gli attivisti")
+    filter_options = [lbl_all] + list(activist_map.values())
+    filter_email_map = {lbl_all: "ALL"}
+    for e, n in activist_map.items():
+        filter_email_map[n] = e
 
-lbl_filter = current_i18n.get("filter_label", "Filtra per Attivista")
-selected_filter = st.selectbox(lbl_filter, filter_options)
-selected_email = filter_email_map[selected_filter]
+    lbl_filter = current_i18n.get("filter_label", "Filtra per Attivista")
+    selected_filter = st.selectbox(lbl_filter, filter_options)
+    selected_email = filter_email_map[selected_filter]
+    
+    # Riduciamo search_emails a quello scelto
+    search_emails = activist_emails if selected_email == "ALL" else [selected_email]
+
+else:
+    # --- LOGICA PER SEMPLICE ATTIVISTA ---
+    # Non fetchiamo i child, isoliamo strettamente il suo account
+    search_emails = [user_email]
+    
+    try:
+        user_doc = db.collection("users").document(user_email).get()
+        lbl_you = current_i18n.get("you", "Tu")
+        if user_doc.exists:
+            u_data = user_doc.to_dict()
+            act_name = f"{u_data.get('nome', '')} {u_data.get('cognome', '')}".strip()
+            activist_map[user_email] = f"{act_name} ({lbl_you})" if act_name else f"{user_email} ({lbl_you})"
+        else:
+            activist_map[user_email] = f"{user_email} ({lbl_you})"
+    except Exception as e:
+        lbl_you = current_i18n.get("you", "Tu")
+        activist_map[user_email] = f"{user_email} ({lbl_you})"
 
 # 5. FETCH CHATS
 all_chats = []
-
-# Scegliamo target emails base
-search_emails = activist_emails if selected_email == "ALL" else [selected_email]
 
 # Funzione per smezzare l'array in chunk di 10
 def chunk_array(lst, n):
@@ -146,9 +170,8 @@ expert_map = {exp["id"]: exp["label"].get(lang_code, exp["label"]["EN"]) for exp
 def format_date_locale(iso_string, l_code):
     try:
         dt = datetime.datetime.fromisoformat(iso_string)
-        if l_code == "IT":
-            return dt.strftime("%d/%m/%Y %H:%M")
-        return dt.strftime("%Y-%m-%d %H:%M")
+        # Force Euro format universally to avoid American/ISO mismatches.
+        return dt.strftime("%d/%m/%Y %H:%M")
     except:
         return iso_string.replace("T", " ")[:16]
 
@@ -168,14 +191,18 @@ for chat in sorted_chats:
     
     # Priority: nome+cognome from chat obj -> mapped name from activist list -> email
     display_name = ""
-    if chat_nome or chat_cognome:
-        display_name = f"{chat_nome} {chat_cognome}".strip()
-    elif chat_email in activist_map:
-        display_name = activist_map[chat_email]
+    # Se NON sei un organizzatore, non ha senso che tu legga il tuo nome/mail da tutte le parti sulle TUE chat.
+    if "org" not in user_profiles:
+        titolo = f"{date_formatted} - ({expert_name})"
     else:
-        display_name = chat_email
-        
-    titolo = f"{date_formatted} - {display_name} ({expert_name})"
+        if chat_nome or chat_cognome:
+            display_name = f"{chat_nome} {chat_cognome}".strip()
+        elif chat_email in activist_map:
+            display_name = activist_map[chat_email]
+        else:
+            display_name = chat_email
+            
+        titolo = f"{date_formatted} - {display_name} ({expert_name})"
     
     with st.expander(titolo):
         messages = chat.get("messages", [])

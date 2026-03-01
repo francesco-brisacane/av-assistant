@@ -41,7 +41,7 @@ if is_logged_in:
         pages.append(activists_page)
     if "admin" in user_profiles:
         pages.append(organizers_page)
-    if "org" in user_profiles:
+    if "org" in user_profiles or "activist" in user_profiles:
         pages.append(chat_viewer_page)
 
 pg = st.navigation(pages)
