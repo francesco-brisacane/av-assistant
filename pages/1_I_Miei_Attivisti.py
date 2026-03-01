@@ -15,6 +15,21 @@ I18N = load_json("data/i18n.json")
 lang_code = st.session_state.get("lang", "EN")
 current_i18n = I18N.get(lang_code, I18N["EN"])
 
+def apply_delete_button_css():
+    st.markdown("""
+        <style>
+        div.stButton > button[kind="primary"] {
+            background-color: #ff4b4b !important;
+            color: white !important;
+            border: none !important;
+        }
+        div.stButton > button[kind="primary"]:hover {
+            background-color: #ff3333 !important;
+            color: white !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
 # 1. AUTENTICAZIONE E AUTORIZZAZIONE
 try:
     is_logged_in = st.user.is_logged_in
@@ -40,6 +55,7 @@ db = firestore.client()
 COLLECTION_NAME = "organizers"
 
 # 3. UI PRINCIPALE
+apply_delete_button_css()
 st.title(current_i18n.get("page_title", "I miei attivisti"))
 st.write(f"{current_i18n.get('manage_activists', 'Gestione attivisti per:')} **{user_email}**")
 
