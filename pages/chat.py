@@ -141,6 +141,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "current_chat_id" not in st.session_state:
     st.session_state.current_chat_id = str(uuid.uuid4())
+if "state_loaded" not in st.session_state:
+    st.session_state.state_loaded = False
 
 # --- 2.1 COOKIE & SESSION MANAGEMENT ---
 cookie_manager = stx.CookieManager(key="cookie_manager")
@@ -191,7 +193,7 @@ user_id = st.session_state['user_id']
 
 # --- STATE RESTORATION ---
 # Se la chat è vuota, prova a recuperare dal server
-if not st.session_state.messages:
+if not st.session_state.messages and not st.session_state.get("state_loaded"):
     saved_data = load_chat_from_server(user_id)
     if saved_data:
         # Check if we are in a reset cycle - don't load if expert just switched
@@ -205,6 +207,7 @@ if not st.session_state.messages:
                 st.session_state[k] = v
         else:
             print("DEBUG: Expert mismatch or reset in progress. Skipping message restoration.")
+    st.session_state.state_loaded = True
 
 
 
@@ -333,8 +336,17 @@ with st.sidebar:
         for setting in current_expert["settings"]:
             widget_label = setting["label"].get(lang_code, setting["label"]["EN"])
             opts_map = {opt["label"]: opt["value"] for opt in setting["options"]}
-            selection = st.selectbox(widget_label, list(opts_map.keys()), key=f"set_{setting['key']}")
-            prompt_placeholders[f"{{{{{setting['key']}}}}}"] = opts_map[selection]    
+            
+            def on_setting_change():
+                save_chat_to_server(user_id, current_expert["id"])
+                
+            selection = st.selectbox(
+                widget_label, 
+                list(opts_map.keys()), 
+                key=f"set_{setting['key']}",
+                on_change=on_setting_change
+            )
+            prompt_placeholders[f"{{{{{setting['key']}}}}}"] = opts_map[selection]
 
     if current_expert.get("disclaimer"):
         disclaimer_text = current_expert["disclaimer"].get(lang_code)
@@ -433,6 +445,8 @@ if st.session_state.last_expert_id != current_expert["id"]:
     st.session_state.last_expert_id = current_expert["id"]
     # Imposta esplicitamente restored_expert_id per evitare ricaricamenti spuri
     st.session_state.restored_expert_id = current_expert["id"]
+    # Permetti ricaricamento stato per il nuovo esperto
+    st.session_state.state_loaded = False
     save_chat_to_server(user_id, current_expert["id"])
     st.rerun()
 
