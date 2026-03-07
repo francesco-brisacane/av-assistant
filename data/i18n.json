@@ -32,8 +32,7 @@
         "btn_yes_delete": "Yes, Delete",
         "btn_cancel": "Cancel",
         "delete_success": "Activist successfully deleted!",
-        "select_to_delete": "Select rows in the table, then click the delete button.",
-        "select_to_delete": "Select rows in the table, then click the delete button.",
+        "select_to_delete": "Select rows in the table to edit (one) or delete (one or more).",
         "delete_selected_btn": "Delete {count} Selected",
         "delete_selected_confirm": "Are you sure you want to permanently delete {count} selected activists?",
         "menu_chat_viewer": "Activist Chats",
@@ -46,7 +45,18 @@
         "view_chat": "View Chat",
         "filter_all_activists": "All Activists",
         "filter_label": "Filter by Activist",
-        "you": "You"
+        "you": "You",
+        "table_entry_date": "Entry Date",
+        "table_phone": "Phone",
+        "table_province": "Province",
+        "table_notes": "Notes",
+        "form_entry_date": "Entry Date in AV",
+        "form_phone": "Phone",
+        "form_province": "Province",
+        "form_notes": "Notes",
+        "edit_activist_btn": "Edit selected activist",
+        "update_activist_title": "Edit Activist",
+        "btn_save_changes": "Save Changes"
     },
     "IT": {
         "login_required": "Devi effettuare il login per accedere a questa pagina.",
@@ -81,8 +91,7 @@
         "btn_yes_delete": "Sì, Elimina",
         "btn_cancel": "Annulla",
         "delete_success": "Attivista eliminato con successo!",
-        "select_to_delete": "Seleziona le righe nella tabella, poi clicca il pulsante di eliminazione.",
-        "select_to_delete": "Seleziona le righe nella tabella, poi clicca il pulsante di eliminazione.",
+        "select_to_delete": "Seleziona le righe nella tabella per modificare (una sola) o eliminare (una o più).",
         "delete_selected_btn": "Elimina {count} Selezionati",
         "delete_selected_confirm": "Sei sicuro di voler eliminare definitivamente {count} attivisti selezionati?",
         "menu_chat_viewer": "Chat Attivisti",
@@ -95,6 +104,17 @@
         "view_chat": "Vedi Chat",
         "filter_all_activists": "Tutti gli attivisti",
         "filter_label": "Filtra per Attivista",
-        "you": "Tu"
+        "you": "Tu",
+        "table_entry_date": "Data Ingresso",
+        "table_phone": "Telefono",
+        "table_province": "Provincia",
+        "table_notes": "Note",
+        "form_entry_date": "Data Ingresso in AV",
+        "form_phone": "Telefono",
+        "form_province": "Provincia",
+        "form_notes": "Note",
+        "edit_activist_btn": "Modifica attivista selezionato",
+        "update_activist_title": "Modifica Attivista",
+        "btn_save_changes": "Salva Modifiche"
     }
 }

@@ -15,17 +15,45 @@ I18N = load_json("data/i18n.json")
 lang_code = st.session_state.get("lang", "EN")
 current_i18n = I18N.get(lang_code, I18N["EN"])
 
-def apply_delete_button_css():
+def apply_custom_css():
     st.markdown("""
         <style>
-        div.stButton > button[kind="primary"] {
+        /* GLOBAL PRIMARY - Rosso per azioni distruttive (es. Elimina) */
+        button[data-testid="stBaseButton-primary"] {
             background-color: #ff4b4b !important;
-            color: white !important;
-            border: none !important;
+            color: #ffffff !important;
+            border: 1px solid #ff4b4b !important;
+            font-weight: bold !important;
         }
-        div.stButton > button[kind="primary"]:hover {
-            background-color: #ff3333 !important;
-            color: white !important;
+        button[data-testid="stBaseButton-primary"]:hover {
+            background-color: #e60000 !important;
+            border-color: #e60000 !important;
+        }
+
+        /* FORM SUBMIT - Verde per azioni positive (es. Salva, Aggiungi) */
+        div[data-testid="stFormSubmitButton"] button {
+            background-color: #28a745 !important;
+            color: #ffffff !important;
+            border: 1px solid #28a745 !important;
+            font-weight: bold !important;
+            width: 100% !important;
+        }
+        div[data-testid="stFormSubmitButton"] button:hover {
+            background-color: #218838 !important;
+            border-color: #1e7e34 !important;
+        }
+        
+        /* BOTTONI SECONDARI - Bordi più definiti per visibilità */
+        button[data-testid="stBaseButton-secondary"] {
+            border: 1px solid #999999 !important;
+            color: #31333f !important;
+            font-weight: 500 !important;
+        }
+
+        /* Correzione colore testo per tutti i bottoni primari */
+        button[data-testid="stBaseButton-primary"] p, 
+        div[data-testid="stFormSubmitButton"] button p {
+            color: #ffffff !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -55,7 +83,7 @@ db = firestore.client()
 COLLECTION_NAME = "organizers"
 
 # 3. UI PRINCIPALE
-apply_delete_button_css()
+apply_custom_css()
 st.title(current_i18n.get("page_title", "I miei attivisti"))
 st.write(f"{current_i18n.get('manage_activists', 'Gestione attivisti per:')} **{user_email}**")
 
@@ -77,10 +105,33 @@ if activists:
     c_nome = current_i18n.get("table_name", "Nome")
     c_cognome = current_i18n.get("table_surname", "Cognome")
     c_email = current_i18n.get("table_email", "Email")
+    c_data_ingresso = current_i18n.get("table_entry_date", "Data Ingresso")
+    c_telefono = current_i18n.get("table_phone", "Telefono")
+    c_provincia = current_i18n.get("table_province", "Provincia")
+    c_note = current_i18n.get("table_notes", "Note")
     
-    df = df.rename(columns={"nome": c_nome, "cognome": c_cognome, "email": c_email})
-    if set([c_nome, c_cognome, c_email]).issubset(df.columns):
-        df = df[[c_nome, c_cognome, c_email]]
+    # Assicurati che le colonne esistano nel DF, altrimenti metti stringa vuota
+    for col in ["data_ingresso", "telefono", "provincia", "note"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    # Converte data_ingresso in vero datetime per il DateColumn (Streamlit)
+    if "data_ingresso" in df.columns:
+        df["data_ingresso"] = pd.to_datetime(df["data_ingresso"], errors='coerce')
+
+    df = df.rename(columns={
+        "nome": c_nome, 
+        "cognome": c_cognome, 
+        "email": c_email,
+        "data_ingresso": c_data_ingresso,
+        "telefono": c_telefono,
+        "provincia": c_provincia,
+        "note": c_note
+    })
+    
+    cols_to_show = [c_nome, c_cognome, c_email, c_data_ingresso, c_telefono, c_provincia, c_note]
+    existing_cols_to_show = [c for c in cols_to_show if c in df.columns]
+    df = df[existing_cols_to_show]
         
     st.markdown(f"*{current_i18n.get('select_to_delete', 'Seleziona le righe nella tabella, poi clicca il pulsante di eliminazione.')}*")
         
@@ -90,18 +141,97 @@ if activists:
         use_container_width=True, 
         hide_index=True,
         on_select="rerun",
-        selection_mode="multi-row"
+        selection_mode="multi-row",
+        column_config={
+            c_email: st.column_config.TextColumn(width="medium"),
+            c_data_ingresso: st.column_config.DateColumn(format="DD/MM/YYYY"),
+            c_note: st.column_config.TextColumn(width="large", help="Note sull'attivista")
+        }
     )
     
     # Lista degli indici selezionati
     selected_indices = event.selection.rows
     
     # Mostra pulsante "Elimina N selezionati" solo se ci sono selezioni e NON siamo già in fase di conferma
-    if len(selected_indices) > 0 and "confirm_delete" not in st.session_state:
-        delete_btn_label = current_i18n.get('delete_selected_btn', 'Elimina {count} Selezionati').replace("{count}", str(len(selected_indices)))
-        if st.button(f"🗑️ {delete_btn_label}"):
-            st.session_state.confirm_delete = selected_indices
-            st.rerun()
+    if len(selected_indices) > 0 and "confirm_delete" not in st.session_state and "editing_activist" not in st.session_state:
+        col_btns1, col_btns2 = st.columns([2, 8])
+        
+        with col_btns1:
+            delete_btn_label = current_i18n.get('delete_selected_btn', 'Elimina {count} Selezionati').replace("{count}", str(len(selected_indices)))
+            if st.button(f"🗑️ {delete_btn_label}"):
+                st.session_state.confirm_delete = selected_indices
+                st.rerun()
+        
+        with col_btns2:
+            if len(selected_indices) == 1:
+                if st.button(f"📝 {current_i18n.get('edit_activist_btn', 'Modifica attivista selezionato')}"):
+                    st.session_state.editing_activist = activists[selected_indices[0]]
+                    st.rerun()
+            
+    # LOGICA DI MODIFICA
+    if "editing_activist" in st.session_state:
+        st.markdown("---")
+        st.subheader(current_i18n.get("update_activist_title", "Modifica Attivista"))
+        act = st.session_state.editing_activist
+        
+        with st.form("edit_activist_form"):
+            col1, col2 = st.columns(2)
+            
+            # Gestione data per il picker
+            try:
+                current_date = pd.to_datetime(act.get("data_ingresso", "")).date()
+            except:
+                current_date = None
+                
+            with col1:
+                edit_nome = st.text_input(current_i18n.get("form_name", "Nome"), value=act.get("nome", ""), max_chars=50)
+                edit_data_ingresso = st.date_input(current_i18n.get("form_entry_date", "Data Ingresso in AV"), value=current_date)
+                edit_provincia = st.text_input(current_i18n.get("form_province", "Provincia"), value=act.get("provincia", ""), max_chars=50)
+            with col2:
+                edit_cognome = st.text_input(current_i18n.get("form_surname", "Cognome"), value=act.get("cognome", ""), max_chars=50)
+                edit_telefono = st.text_input(current_i18n.get("form_phone", "Telefono"), value=act.get("telefono", ""), max_chars=20)
+                edit_email = st.text_input(current_i18n.get("form_email", "Email (Google Account)"), value=act.get("email", ""), max_chars=100, disabled=True)
+            
+            edit_note = st.text_area(current_i18n.get("form_notes", "Note"), value=act.get("note", ""))
+            
+            c1, c2, _ = st.columns([2, 2, 6])
+            save_submitted = c1.form_submit_button(current_i18n.get("btn_save_changes", "Salva Modifiche"), type="primary")
+            cancel_edit = c2.form_submit_button(current_i18n.get("btn_cancel", "Annulla"))
+            
+            if save_submitted:
+                updated_act = {
+                    "nome": edit_nome.strip(),
+                    "cognome": edit_cognome.strip(),
+                    "email": edit_email.strip().lower(),
+                    "data_ingresso": edit_data_ingresso.strftime("%Y-%m-%d") if edit_data_ingresso else "",
+                    "telefono": edit_telefono.strip(),
+                    "provincia": edit_provincia.strip(),
+                    "note": edit_note.strip()
+                }
+                
+                try:
+                    # Per aggiornare un elemento in un array firestore: ArrayRemove vecchio, ArrayUnion nuovo
+                    batch = db.batch()
+                    batch.update(doc_ref, {"activists": firestore.ArrayRemove([act])})
+                    batch.update(doc_ref, {"activists": firestore.ArrayUnion([updated_act])})
+                    
+                    # Aggiorna anche la collection users (solo nome e cognome)
+                    user_ref = db.collection("users").document(edit_email.strip().lower())
+                    batch.update(user_ref, {
+                        "nome": edit_nome.strip(),
+                        "cognome": edit_cognome.strip()
+                    })
+                    
+                    batch.commit()
+                    st.success(current_i18n.get("activist_added_success", "Aggiornato con successo!"))
+                    del st.session_state.editing_activist
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Errore: {e}")
+            
+            if cancel_edit:
+                del st.session_state.editing_activist
+                st.rerun()
             
     # LOGICA DI CONFERMA ELIMINAZIONE
     if "confirm_delete" in st.session_state:
@@ -180,10 +310,14 @@ with st.form("add_activist_form", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         new_nome = st.text_input(current_i18n.get("form_name", "Nome"), max_chars=50)
+        new_data_ingresso = st.date_input(current_i18n.get("form_entry_date", "Data Ingresso in AV"), value=None)
+        new_provincia = st.text_input(current_i18n.get("form_province", "Provincia"), max_chars=50)
     with col2:
         new_cognome = st.text_input(current_i18n.get("form_surname", "Cognome"), max_chars=50)
+        new_telefono = st.text_input(current_i18n.get("form_phone", "Telefono"), max_chars=20)
+        new_email = st.text_input(current_i18n.get("form_email", "Email (Google Account)"), max_chars=100)
     
-    new_email = st.text_input(current_i18n.get("form_email", "Email (Google Account)"), max_chars=100)
+    new_note = st.text_area(current_i18n.get("form_notes", "Note"))
     
     submitted = st.form_submit_button(current_i18n.get("form_add_button", "Aggiungi"))
     
@@ -204,7 +338,11 @@ with st.form("add_activist_form", clear_on_submit=True):
                 new_activist_data = {
                     "nome": new_nome.strip(),
                     "cognome": new_cognome.strip(),
-                    "email": new_email
+                    "email": new_email,
+                    "data_ingresso": new_data_ingresso.strftime("%Y-%m-%d") if new_data_ingresso else "",
+                    "telefono": new_telefono.strip(),
+                    "provincia": new_provincia.strip(),
+                    "note": new_note.strip()
                 }
                 
                 try:
