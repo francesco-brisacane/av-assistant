@@ -145,6 +145,16 @@ if "state_loaded" not in st.session_state:
     st.session_state.state_loaded = False
 
 # --- 2.1 COOKIE & SESSION MANAGEMENT ---
+# extra_streamlit_components.CookieManager e' asincrono: alla prima get() ritorna None
+# anche quando il cookie esiste. Aspettiamo fino a MAX_COOKIE_WAIT_ATTEMPTS rerun prima
+# di concludere che l'utente e' davvero nuovo. Questo serve sia all'avvio normale, sia
+# (soprattutto) quando il websocket si riconnette dopo che lo smartphone ha messo il
+# browser in background: il session_state viene azzerato e si rientra in questa logica;
+# bisogna dare al cookie manager il tempo di rileggere il cookie esistente, altrimenti
+# si genera un nuovo UUID e l'utente perde la chat.
+MAX_COOKIE_WAIT_ATTEMPTS = 3
+COOKIE_WAIT_DELAY_S = 0.5
+
 cookie_manager = stx.CookieManager(key="cookie_manager")
 uuid_cookie = cookie_manager.get(cookie="av_user_id")
 
@@ -153,7 +163,8 @@ print(f"DEBUG: Cookie read result: {uuid_cookie} (Type: {type(uuid_cookie)})")
 if uuid_cookie:
     print(f"DEBUG: Using existing cookie: {uuid_cookie}")
     st.session_state['user_id'] = uuid_cookie
-    
+    st.session_state["cookie_wait_attempts"] = MAX_COOKIE_WAIT_ATTEMPTS
+
     # Check consistency: Cookie exists, but does document exist?
     doc_ref = db.collection(CHATS_COLLECTION).document(uuid_cookie)
     if not doc_ref.get().exists:
@@ -163,28 +174,32 @@ if uuid_cookie:
         else:
             st.error("Configurazione esperti mancante.")
             st.stop()
+elif st.session_state.get('user_id'):
+    # Guardia: in un rerun successivo il cookie manager puo' ancora restituire None
+    # mentre noi abbiamo gia' un user_id valido (appena generato o letto in precedenza).
+    # Senza questo controllo si rigenererebbe un nuovo UUID a ogni rerun, creando
+    # documenti orfani in Firestore (vedi log: piu' "Generating NEW UUID" di seguito).
+    print(f"DEBUG: Cookie None but user_id already set ({st.session_state['user_id']}). Reusing.")
 else:
-    print("DEBUG: Cookie not found or None.")
-    # Se il cookie non c'è, controlliamo se dobbiamo aspettare
-    if "cookie_init_done" not in st.session_state:
-        st.session_state["cookie_init_done"] = True
-        print("DEBUG: Performing initial rerun for cookie manager...")
-        time.sleep(0.5) 
+    attempts = st.session_state.get("cookie_wait_attempts", 0)
+    if attempts < MAX_COOKIE_WAIT_ATTEMPTS:
+        st.session_state["cookie_wait_attempts"] = attempts + 1
+        print(f"DEBUG: Cookie not found, waiting (attempt {attempts + 1}/{MAX_COOKIE_WAIT_ATTEMPTS})...")
+        time.sleep(COOKIE_WAIT_DELAY_S)
         st.rerun()
-        
-    # Se siamo qui, dopo il rerun il cookie è ancora assente. Creiamone uno nuovo.
+
+    # Esauriti i tentativi: utente realmente nuovo. Generiamo un UUID e lo persistiamo.
     new_uuid = str(uuid.uuid4())
-    print(f"DEBUG: Generating NEW UUID: {new_uuid}")
-    
-    # Imposta cookie
+    print(f"DEBUG: No cookie after {MAX_COOKIE_WAIT_ATTEMPTS} attempts. Generating NEW UUID: {new_uuid}")
+
     expires = datetime.datetime.now() + datetime.timedelta(days=30)
     cookie_manager.set("av_user_id", new_uuid, expires_at=expires)
-    
+
     st.session_state['user_id'] = new_uuid
-    
+
     # Create document for new user immediately
     if EXPERTS_CONFIG:
-        save_chat_to_server(new_uuid, EXPERTS_CONFIG[0]["id"]) 
+        save_chat_to_server(new_uuid, EXPERTS_CONFIG[0]["id"])
     else:
         st.error("Configurazione esperti mancante.")
         st.stop()
