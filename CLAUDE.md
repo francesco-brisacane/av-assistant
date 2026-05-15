@@ -27,8 +27,9 @@ Init in `pages/chat.py` da `st.secrets["firebase"]`. Collezioni:
 - `users/{email}` — `{ profiles: [...], nome, cognome, ... }`. Profili noti: `admin`, `org`, `activist`. Eventuali campi futuri: `telegram_user_id`, `telegram_username` (popolati lazy in Fase 3 se servono).
 - `active_chats/{user_id}` — chat live per cookie `av_user_id` (UUID per utente, anche anonimo).
 - `profiled_chats/{chat_id}` — log permanente (solo per esperti con `authorizedProfiles` non vuoto + utente loggato).
-- `organizers/{org_email}` — `{ activists: [{nome, cognome, email, data_ingresso, telefono, provincia, note, telegram_username}, ...], telegram_session_encrypted, telegram_chat_id, telegram_chat_title }`. La collezione modella anche il "capitolo" implicito: l'array `activists` sono gli attivisti del capitolo gestito da quell'organizer; i campi `telegram_*` configurano l'integrazione Telegram del capitolo (vedi sezione apposita).
-- `cube_events/{event_id}` — un cubo (evento) creato da un organizer. Schema: `{ id, organizer_email, data, ora, luogo, note, poll_link, telegram_chat_ref, telegram_poll_msg_id, poll_question, poll_options: [{idx, text, category: yes|maybe|no|ignore}], poll_multiple_choice, participations: { email: {voted, option_idx, option_text, telegram_user_id} }, outside_voters: [{user_id, username, first_name, last_name, option_idx, option_text}], last_refresh, created_at, updated_at, status: active|closed }`. L'organizer crea il sondaggio in Telegram a mano, incolla il link al messaggio nel form di creazione cubo; la pagina chiama `get_poll_message` per validare e poi `get_poll_voters` su richiesta per popolare `participations`/`outside_voters`. La lista degli attivisti invitati e' dinamica (sempre ricalcolata dal documento `organizers/{email}.activists` corrente al momento del rendering).
+- `organizers/{org_email}` — `{ activists: [{nome, cognome, email, data_ingresso, telefono, provincia, note, telegram_username}, ...], telegram_session_encrypted, telegram_chat_id, telegram_chat_title, poll_option_mappings: { <option_text_lowercase>: yes|maybe|no } }`. La collezione modella anche il "capitolo" implicito: l'array `activists` sono gli attivisti del capitolo gestito da quell'organizer; i campi `telegram_*` configurano l'integrazione Telegram del capitolo (vedi sezione apposita).
+- `cube_events/{event_id}` — un cubo (evento) creato da un organizer. Schema: `{ id, organizer_email, data, ora, luogo, note, poll_link, telegram_chat_ref, telegram_poll_msg_id, poll_question, poll_options: [{idx, text, category: yes|maybe|no|ignore}], poll_multiple_choice, participations: { email: {voted, option_idx, option_text, telegram_user_id} }, outside_voters: [{user_id, username, first_name, last_name, option_idx, option_text}], reminders_sent: { email: {sent_at, status: ok|fail, error, fallback_link} }, last_refresh, created_at, updated_at, status: active|closed }`. L'organizer crea il sondaggio in Telegram a mano, incolla il link al messaggio nel form di creazione cubo; la pagina chiama `get_poll_message` per validare e poi `get_poll_voters` su richiesta per popolare `participations`/`outside_voters`. La lista degli attivisti invitati e' dinamica (sempre ricalcolata dal documento `organizers/{email}.activists` corrente al momento del rendering).
+- `reminder_log/{auto_id}` — un'entry per ogni reminder DM tentato. Schema: `{ event_id, organizer_email, to_email, to_username, to_telegram_user_id, status: ok|fail, error, sent_at }`. Audit trail globale dei reminder; serve a posteriori per stats e investigazione.
 
 ## Integrazione Telegram (Cubi)
 
@@ -47,7 +48,7 @@ Feature per aiutare gli organizer a tracciare i sondaggi di partecipazione ai cu
 - Wizard programmatic login: `send_code(phone)` → `sign_in_with_code(...)` → opzionale `sign_in_with_password(...)` se 2FA. Tra step lo state vive in `st.session_state` (`tg_step`, `tg_phone`, `tg_phone_code_hash`, `tg_intermediate_session`).
 - Stato sessione: `whoami(session)`, `logout(session)`.
 - Lettura sondaggi (Fase 2): `parse_telegram_message_link(url) -> (chat_ref, msg_id)`, `get_poll_message(session, chat_ref, msg_id) -> {poll_id, question, options, is_anonymous, is_closed, multiple_choice}`, `get_poll_voters(session, chat_ref, msg_id) -> {options: [{idx, text, voters: [{user_id, username, first_name}], voter_count}], total_voters_unique, ...}`, `resolve_username(session, handle)`.
-- Stub Fase 3: `send_dm(session, user_id, text)` (raise NotImplementedError).
+- Invio DM (Fase 3): `send_dm(session, recipient, text) -> dict` — recipient puo' essere user_id (int) o username (str). Ritorna `{ok, error, user_id?, username?, fallback_link?}`. Errori per-utente (privacy, blocked, deactivated, unknown_user, invalid_id, session_invalid) sono restituiti nel dict; errori globali (PeerFloodError, FloodWaitError) sollevano `TelegramOperationError` cosi' il chiamante puo' abortire il batch.
 
 **Constraint Telegram da tenere a mente**:
 - I sondaggi che vogliamo tracciare devono essere **non-anonimi** (Telegram non espone i votanti dei poll anonimi). `get_poll_voters` solleva `TelegramOperationError` se rileva un poll anonimo.
@@ -61,10 +62,20 @@ Feature per aiutare gli organizer a tracciare i sondaggi di partecipazione ai cu
 - `TELEGRAM_API_HASH` (str) — idem.
 - `TELEGRAM_SESSION_FERNET_KEY` — chiave Fernet base64 a 44 caratteri. Generala una volta sola con: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. **Mai cambiarla**: cifra le session degli organizer, ruotarla le invalida tutte.
 
+**Mapping opzioni del sondaggio (cube_events.poll_options[i].category)**:
+Le opzioni libere di un poll Telegram vengono classificate in 4 categorie (`yes` / `maybe` / `no` / `ignore`) che alimentano i contatori della dashboard e (in Fase 3) la logica reminder. Il valore raw (`option_text`) resta sempre visibile per granularita' (es. cubi multi-giorno con "Ci saro' il primo/secondo/terzo giorno" mappati tutti a `yes` ma con testo distinto in tabella).
+
+Sequenza con cui viene scelta la categoria di default per ogni opzione, gestita in [pages/4_Gestione_Cubi.py](pages/4_Gestione_Cubi.py):
+1. `derive_initial_category(text, organizer.poll_option_mappings)` — cerca prima nella memoria dell'organizer (chiave = lowercase del testo).
+2. Se non c'e' match, `auto_detect_category(text)` applica regex su keyword in ordine `no -> maybe -> yes` (l'ordine evita falsi positivi come "non vengo" che contiene "vengo"). Le keyword coprono IT/EN/emoji.
+3. Fallback finale: `ignore`.
+
+Quando l'organizer salva la mappatura manualmente (form "Salva mappatura"), `remember_mappings` aggiorna `organizers/{email}.poll_option_mappings` con le scelte non-`ignore`. Cosi' la stessa opzione testuale verra' riconosciuta correttamente nei cubi futuri (auto-tuning per capitolo).
+
 **Roadmap fasi**:
 - Fase 1 (✅ completata): infrastruttura + wizard login + campi Telegram in I Miei Attivisti.
 - Fase 2 (✅ completata): pagina "Gestione Cubi" con CRUD eventi + lettura sondaggi via Telethon, dashboard partecipazioni con refresh on-demand.
-- Fase 3 (pending): invio DM reminder via Telethon (FloodWait awareness, fallback link `t.me/<username>`).
+- Fase 3 (✅ completata): invio DM reminder via Telethon dal client dell'organizer, con template personalizzabile (placeholder {nome}/{cognome}/{data}/{ora}/{luogo}/{poll_link}), pre-spunta automatica dei non-rispondenti, opt-in per i 'Forse', invio sequenziale con delay anti-FloodWait, fallback link `t.me/<username>` quando il DM e' bloccato (privacy/blocked/deactivated).
 - Fase 4 (pending): storico partecipazioni aggregato.
 
 ## Auth & profili

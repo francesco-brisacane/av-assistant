@@ -6,7 +6,7 @@ Responsabilita':
 - Esporre il flow di login programmatico (numero -> codice -> eventuale 2FA).
 - Operazioni read-only sui sondaggi: get_poll_message, get_poll_voters,
   resolve_username, parse_telegram_message_link.
-- Stub send_dm per Fase 3.
+- Invio DM reminder: send_dm (Fase 3).
 
 Convenzioni:
 - Non viene mantenuta nessuna istanza di TelegramClient cacheata fra rerun
@@ -42,13 +42,20 @@ from telethon import TelegramClient
 from telethon.errors import (
     ChannelPrivateError,
     FloodWaitError,
+    InputUserDeactivatedError,
+    PeerFloodError,
+    PeerIdInvalidError,
     PhoneCodeExpiredError,
     PhoneCodeInvalidError,
     PhoneNumberInvalidError,
     PollVoteRequiredError,
     SessionPasswordNeededError,
+    UserIdInvalidError,
+    UserIsBlockedError,
+    UserPrivacyRestrictedError,
     UsernameInvalidError,
     UsernameNotOccupiedError,
+    YouBlockedUserError,
 )
 from telethon.sessions import StringSession
 from telethon.tl.functions.messages import GetPollVotesRequest
@@ -613,9 +620,77 @@ def get_poll_voters(
 
 
 # ---------------------------------------------------------------------------
-# Stub Fase 3
+# Fase 3 - Invio DM reminder
 # ---------------------------------------------------------------------------
 
-def send_dm(session_string: str, user_id: int, text: str) -> bool:
-    """[Fase 3] Invia un DM testuale a user_id. Ritorna True se inviato."""
-    raise NotImplementedError("send_dm sara' implementato in Fase 3")
+async def _send_dm_async(session_string: str, recipient: Any, text: str) -> dict:
+    client = _new_client(session_string)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            return {"ok": False, "error": "session_invalid", "fallback_link": None}
+        # Risolvi entity: recipient puo' essere user_id (int) o username (str senza @)
+        try:
+            entity = await client.get_entity(recipient)
+        except (UsernameNotOccupiedError, UsernameInvalidError, ValueError):
+            return {"ok": False, "error": "unknown_user", "fallback_link": None}
+        uname = getattr(entity, "username", None)
+        fb = f"https://t.me/{uname}" if uname else None
+        try:
+            await client.send_message(entity, text)
+            return {
+                "ok": True,
+                "error": None,
+                "user_id": entity.id,
+                "username": uname,
+                "fallback_link": fb,
+            }
+        except UserPrivacyRestrictedError:
+            return {"ok": False, "error": "privacy", "user_id": entity.id, "username": uname, "fallback_link": fb}
+        except UserIsBlockedError:
+            return {"ok": False, "error": "blocked_by_user", "user_id": entity.id, "username": uname, "fallback_link": fb}
+        except YouBlockedUserError:
+            return {"ok": False, "error": "you_blocked_them", "user_id": entity.id, "username": uname, "fallback_link": fb}
+        except InputUserDeactivatedError:
+            return {"ok": False, "error": "deactivated", "user_id": entity.id, "username": uname, "fallback_link": None}
+        except (PeerIdInvalidError, UserIdInvalidError):
+            return {"ok": False, "error": "invalid_id", "fallback_link": fb}
+    finally:
+        await client.disconnect()
+
+
+def send_dm(session_string: str, recipient: Any, text: str) -> dict:
+    """Invia un DM testuale tramite l'account Telethon dell'organizer.
+
+    recipient: int (user_id Telegram) oppure str (username senza @).
+    text: testo del messaggio.
+
+    Ritorno (dict):
+      {
+        "ok": bool,
+        "error": str | None,   # "privacy" | "blocked_by_user" | "you_blocked_them"
+                                  # | "deactivated" | "unknown_user" | "invalid_id"
+                                  # | "session_invalid" | "unknown: <descr>"
+        "user_id": int | omitted,
+        "username": str | None,
+        "fallback_link": str | None,  # https://t.me/<username> se disponibile
+      }
+
+    Solleva TelegramOperationError per errori che bloccano l'intero batch:
+      - PeerFloodError (anti-spam Telegram: l'organizer e' stato flaggato).
+      - FloodWaitError (rate-limit, riprovare fra N secondi).
+    """
+    try:
+        return _run(_send_dm_async(session_string, recipient, text))
+    except PeerFloodError as e:
+        raise TelegramOperationError(
+            "Telegram ha temporaneamente bloccato il tuo account dall'invio di DM verso "
+            "non-contatti (protezione anti-spam). Attendi qualche ora prima di riprovare, "
+            "oppure aggiungi i destinatari ai tuoi contatti Telegram."
+        ) from e
+    except FloodWaitError as e:
+        raise TelegramOperationError(f"Rate limit Telegram: riprova fra {e.seconds}s.") from e
+    except TelegramOperationError:
+        raise
+    except Exception as e:
+        return {"ok": False, "error": f"unknown: {e}", "fallback_link": None}
