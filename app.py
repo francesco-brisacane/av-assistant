@@ -24,6 +24,7 @@ chat_page = st.Page("pages/chat.py", title=current_i18n.get("menu_chat", "Chat")
 activists_page = st.Page("pages/1_I_Miei_Attivisti.py", title=current_i18n.get("menu_activists", "My Activists"), icon="👥")
 organizers_page = st.Page("pages/2_Gestione_Organizzatori.py", title=current_i18n.get("menu_organizers", "Manage Organizers"), icon="⚙️")
 chat_viewer_page = st.Page("pages/3_Chat_Attivisti.py", title=current_i18n.get("menu_chat_viewer", "Chat Attivisti"), icon="📑")
+cubes_page = st.Page("pages/4_Gestione_Cubi.py", title=current_i18n.get("menu_cubes", "Cubes"), icon="📅")
 
 # Determine visibility based on user profiles
 user_profiles = st.session_state.get("user_profiles", [])
@@ -39,6 +40,7 @@ pages = [chat_page]
 if is_logged_in:
     if "org" in user_profiles or "admin" in user_profiles:
         pages.append(activists_page)
+        pages.append(cubes_page)
     if "admin" in user_profiles:
         pages.append(organizers_page)
     if "org" in user_profiles or "activist" in user_profiles:

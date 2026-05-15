@@ -4,8 +4,9 @@ Modulo Telethon riutilizzabile per il progetto AV.
 Responsabilita':
 - Cifrare/decifrare la StringSession Telethon di ogni organizer (Fernet).
 - Esporre il flow di login programmatico (numero -> codice -> eventuale 2FA).
-- Esporre stub asincroni per le operazioni future (resolve_username,
-  get_poll_voters, send_dm) che verranno implementate in Fase 2 e 3.
+- Operazioni read-only sui sondaggi: get_poll_message, get_poll_voters,
+  resolve_username, parse_telegram_message_link.
+- Stub send_dm per Fase 3.
 
 Convenzioni:
 - Non viene mantenuta nessuna istanza di TelegramClient cacheata fra rerun
@@ -32,19 +33,26 @@ Per generare TELEGRAM_SESSION_FERNET_KEY una volta sola:
 from __future__ import annotations
 
 import asyncio
-from typing import Optional, Tuple
+import re
+from typing import Any, List, Optional, Tuple, Union
 
 import streamlit as st
 from cryptography.fernet import Fernet, InvalidToken
 from telethon import TelegramClient
 from telethon.errors import (
-    PhoneCodeInvalidError,
-    PhoneCodeExpiredError,
-    SessionPasswordNeededError,
-    PhoneNumberInvalidError,
+    ChannelPrivateError,
     FloodWaitError,
+    PhoneCodeExpiredError,
+    PhoneCodeInvalidError,
+    PhoneNumberInvalidError,
+    PollVoteRequiredError,
+    SessionPasswordNeededError,
+    UsernameInvalidError,
+    UsernameNotOccupiedError,
 )
 from telethon.sessions import StringSession
+from telethon.tl.functions.messages import GetPollVotesRequest
+from telethon.tl.types import MessageMediaPoll
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +65,84 @@ class TelegramConfigError(RuntimeError):
 
 class TelegramLoginError(RuntimeError):
     """Errore generico durante il flow di login (con messaggio user-friendly)."""
+
+
+class TelegramOperationError(RuntimeError):
+    """Errore durante una operazione Telethon post-login (lettura poll, DM, ecc.)."""
+
+
+# ---------------------------------------------------------------------------
+# Helper: parsing link e testi
+# ---------------------------------------------------------------------------
+
+# chat_ref puo' essere:
+#   - str: username del gruppo pubblico (senza @)
+#   - int: full channel ID per supergroup privato (es. -1001234567890)
+ChatRef = Union[str, int]
+
+
+def parse_telegram_message_link(url: str) -> Tuple[ChatRef, int]:
+    """Estrae (chat_ref, message_id) da un link Telegram.
+
+    Supporta:
+    - https://t.me/<username>/<msg_id>            (gruppo/canale pubblico)
+    - https://t.me/<username>/<topic>/<msg_id>    (forum/thread pubblico)
+    - https://t.me/c/<internal>/<msg_id>          (supergroup privato)
+    - https://t.me/c/<internal>/<topic>/<msg_id>  (forum privato)
+
+    Per i privati ritorna full channel ID nel formato -100<internal>.
+    """
+    if not url:
+        raise TelegramOperationError("Link sondaggio vuoto.")
+    url = url.strip()
+    # Caso privato: t.me/c/<internal>/<msg> oppure t.me/c/<internal>/<topic>/<msg>
+    m_priv = re.match(
+        r"^https?://t\.me/c/(\d+)(?:/\d+)?/(\d+)/?$",
+        url,
+    )
+    if m_priv:
+        internal_id = int(m_priv.group(1))
+        msg_id = int(m_priv.group(2))
+        full_channel_id = int(f"-100{internal_id}")
+        return full_channel_id, msg_id
+    # Caso pubblico: t.me/<username>/<msg> oppure con thread
+    m_pub = re.match(
+        r"^https?://t\.me/([a-zA-Z][a-zA-Z0-9_]{3,})(?:/\d+)?/(\d+)/?$",
+        url,
+    )
+    if m_pub:
+        username = m_pub.group(1)
+        msg_id = int(m_pub.group(2))
+        return username, msg_id
+    raise TelegramOperationError(
+        "Link Telegram non riconosciuto. Usa un link a un messaggio nel formato https://t.me/..."
+    )
+
+
+def _extract_text(obj: Any) -> str:
+    """Estrae il testo da un campo che puo' essere str o TextWithEntities."""
+    if obj is None:
+        return ""
+    if isinstance(obj, str):
+        return obj
+    if hasattr(obj, "text"):
+        return obj.text or ""
+    return str(obj)
+
+
+def _normalize_chat_ref(chat_ref: Any) -> ChatRef:
+    """Converte una rappresentazione serializzata (str o int) nel formato che Telethon accetta."""
+    if isinstance(chat_ref, int):
+        return chat_ref
+    if isinstance(chat_ref, str):
+        s = chat_ref.strip()
+        # se sembra un intero negativo lo trattiamo come ID di canale
+        if s.startswith("-") and s[1:].isdigit():
+            return int(s)
+        if s.isdigit():
+            return int(s)
+        return s.lstrip("@")
+    raise TelegramOperationError(f"chat_ref non valido: {chat_ref!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -318,37 +404,217 @@ def logout(session_string: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Stub Fase 2 / Fase 3
-#
-# Queste funzioni hanno la firma definitiva ma sollevano NotImplementedError
-# fino a quando non verranno implementate. Sono qui per fare da contratto.
+# Fase 2 - Lettura sondaggi
 # ---------------------------------------------------------------------------
 
+async def _resolve_username_async(session_string: str, username: str) -> Optional[dict]:
+    if not username:
+        return None
+    client = _new_client(session_string)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            return None
+        try:
+            entity = await client.get_entity(username.lstrip("@"))
+        except (UsernameInvalidError, UsernameNotOccupiedError, ValueError):
+            return None
+        return {
+            "user_id": entity.id,
+            "username": getattr(entity, "username", None),
+            "first_name": getattr(entity, "first_name", "") or "",
+            "last_name": getattr(entity, "last_name", "") or "",
+        }
+    finally:
+        await client.disconnect()
+
+
 def resolve_username(session_string: str, username: str) -> Optional[dict]:
-    """[Fase 2] Risolve un @username Telegram in {id, username, first_name, last_name}.
+    """Risolve un @username Telegram in {user_id, username, first_name, last_name}.
 
-    Ritorna None se l'utente non e' raggiungibile (sconosciuto o privacy).
+    Ritorna None se l'utente non e' raggiungibile o l'handle non esiste.
     """
-    raise NotImplementedError("resolve_username sara' implementato in Fase 2")
+    try:
+        return _run(_resolve_username_async(session_string, username))
+    except FloodWaitError as e:
+        raise TelegramOperationError(f"Telegram rate limit, riprova fra {e.seconds}s.") from e
+    except Exception:
+        return None
 
 
-def get_poll_voters(
-    session_string: str, chat_id: int, message_id: int
+async def _get_poll_message_async(
+    session_string: str, chat_ref: ChatRef, msg_id: int
 ) -> dict:
-    """[Fase 2] Ritorna i votanti di un sondaggio nel formato:
+    client = _new_client(session_string)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            raise TelegramOperationError("Sessione Telegram non valida. Riconnettiti.")
+        try:
+            entity = await client.get_entity(chat_ref)
+        except (ValueError, UsernameNotOccupiedError) as e:
+            raise TelegramOperationError(
+                "Gruppo Telegram non trovato. Controlla di essere nel gruppo del link."
+            ) from e
+        except ChannelPrivateError as e:
+            raise TelegramOperationError(
+                "Gruppo privato a cui non hai accesso con questo account Telegram."
+            ) from e
+        msg = await client.get_messages(entity, ids=msg_id)
+        if msg is None:
+            raise TelegramOperationError("Messaggio non trovato in questo gruppo.")
+        if not isinstance(msg.media, MessageMediaPoll):
+            raise TelegramOperationError("Il messaggio linkato non e' un sondaggio.")
+        poll = msg.media.poll
+        options = []
+        for i, ans in enumerate(poll.answers):
+            options.append({
+                "idx": i,
+                "text": _extract_text(ans.text),
+            })
+        return {
+            "poll_id": poll.id,
+            "question": _extract_text(poll.question),
+            "options": options,
+            "is_anonymous": not getattr(poll, "public_voters", False),
+            "is_closed": getattr(poll, "closed", False),
+            "multiple_choice": getattr(poll, "multiple_choice", False),
+        }
+    finally:
+        await client.disconnect()
 
+
+def get_poll_message(session_string: str, chat_ref: ChatRef, msg_id: int) -> dict:
+    """Ritorna metadata di un sondaggio Telegram.
+
+    Output:
         {
           "poll_id": int,
+          "question": str,
+          "options": [{"idx": int, "text": str}, ...],
+          "is_anonymous": bool,
           "is_closed": bool,
+          "multiple_choice": bool,
+        }
+
+    Solleva TelegramOperationError per errori user-facing (gruppo non trovato,
+    sondaggio anonimo, link sbagliato, ecc.).
+    """
+    chat_ref = _normalize_chat_ref(chat_ref)
+    try:
+        return _run(_get_poll_message_async(session_string, chat_ref, msg_id))
+    except TelegramOperationError:
+        raise
+    except FloodWaitError as e:
+        raise TelegramOperationError(f"Telegram rate limit, riprova fra {e.seconds}s.") from e
+    except Exception as e:
+        raise TelegramOperationError(f"Errore durante la lettura del sondaggio: {e}") from e
+
+
+async def _get_poll_voters_async(
+    session_string: str, chat_ref: ChatRef, msg_id: int, per_option_limit: int
+) -> dict:
+    client = _new_client(session_string)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            raise TelegramOperationError("Sessione Telegram non valida. Riconnettiti.")
+        try:
+            entity = await client.get_entity(chat_ref)
+        except (ValueError, UsernameNotOccupiedError) as e:
+            raise TelegramOperationError("Gruppo Telegram non trovato.") from e
+        except ChannelPrivateError as e:
+            raise TelegramOperationError("Gruppo privato non accessibile.") from e
+        msg = await client.get_messages(entity, ids=msg_id)
+        if msg is None or not isinstance(msg.media, MessageMediaPoll):
+            raise TelegramOperationError("Sondaggio non trovato.")
+        poll = msg.media.poll
+        if not getattr(poll, "public_voters", False):
+            raise TelegramOperationError(
+                "Il sondaggio e' anonimo: Telegram non espone chi ha votato. "
+                "L'organizer deve creare un sondaggio non-anonimo."
+            )
+        results_field = getattr(msg.media, "results", None)
+        total_voters_unique = getattr(results_field, "total_voters", 0) if results_field else 0
+        options_data: List[dict] = []
+        for i, ans in enumerate(poll.answers):
+            vot_res = await client(GetPollVotesRequest(
+                peer=entity,
+                id=msg_id,
+                option=ans.option,
+                limit=per_option_limit,
+            ))
+            voter_list = []
+            for u in getattr(vot_res, "users", []) or []:
+                voter_list.append({
+                    "user_id": u.id,
+                    "username": getattr(u, "username", None),
+                    "first_name": getattr(u, "first_name", "") or "",
+                    "last_name": getattr(u, "last_name", "") or "",
+                })
+            options_data.append({
+                "idx": i,
+                "text": _extract_text(ans.text),
+                "voters": voter_list,
+                "voter_count": len(voter_list),
+            })
+        return {
+            "poll_id": poll.id,
+            "question": _extract_text(poll.question),
+            "is_closed": getattr(poll, "closed", False),
+            "multiple_choice": getattr(poll, "multiple_choice", False),
+            "total_voters_unique": total_voters_unique,
+            "options": options_data,
+        }
+    finally:
+        await client.disconnect()
+
+def get_poll_voters(
+    session_string: str, chat_ref: ChatRef, msg_id: int, per_option_limit: int = 200
+) -> dict:
+    """Ritorna l'elenco dei votanti per ogni opzione di un sondaggio non-anonimo.
+
+    Output:
+        {
+          "poll_id": int,
+          "question": str,
+          "is_closed": bool,
+          "multiple_choice": bool,
+          "total_voters_unique": int,
           "options": [
-            {"text": "Si'", "voter_count": 12, "voters": [<user_id>, ...]},
+            {
+              "idx": int,
+              "text": str,
+              "voter_count": int,
+              "voters": [{user_id, username, first_name, last_name}, ...],
+            },
             ...
           ],
-          "total_voters": int,
         }
-    """
-    raise NotImplementedError("get_poll_voters sara' implementato in Fase 2")
 
+    Solleva TelegramOperationError("POLL_VOTE_REQUIRED") se l'organizer non
+    ha ancora votato nel sondaggio (vincolo Telegram).
+    """
+    chat_ref = _normalize_chat_ref(chat_ref)
+    try:
+        return _run(_get_poll_voters_async(session_string, chat_ref, msg_id, per_option_limit))
+    except TelegramOperationError:
+        raise
+    except PollVoteRequiredError as e:
+        raise TelegramOperationError(
+            "Per leggere i votanti devi prima votare tu stesso nel sondaggio "
+            "(vincolo di Telegram). Apri il sondaggio in Telegram, vota una "
+            "qualunque opzione, poi torna qui e premi Aggiorna."
+        ) from e
+    except FloodWaitError as e:
+        raise TelegramOperationError(f"Telegram rate limit, riprova fra {e.seconds}s.") from e
+    except Exception as e:
+        raise TelegramOperationError(f"Errore durante la lettura dei votanti: {e}") from e
+
+
+# ---------------------------------------------------------------------------
+# Stub Fase 3
+# ---------------------------------------------------------------------------
 
 def send_dm(session_string: str, user_id: int, text: str) -> bool:
     """[Fase 3] Invia un DM testuale a user_id. Ritorna True se inviato."""
