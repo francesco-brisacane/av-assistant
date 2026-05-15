@@ -65,6 +65,16 @@ GROQ_API_KEY = "gsk_..."
 GOOGLE_API_KEY = "AIza..."
 OPENROUTER_API_KEY = "sk-or-..."
 
+# --- Integrazione Telegram (gestione cubi) ---
+# Da my.telegram.org/apps (vedi sotto)
+TELEGRAM_API_ID = "12345"
+TELEGRAM_API_HASH = "abcdef0123456789abcdef0123456789"
+# Chiave Fernet per cifrare le session Telethon degli organizer.
+# Generala UNA VOLTA con:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Non cambiarla mai dopo il primo deploy: cifra le session salvate.
+TELEGRAM_SESSION_FERNET_KEY = "<44-char-base64-fernet-key>"
+
 [firebase]
 type = "service_account"
 project_id = "..."
@@ -127,6 +137,38 @@ streamlit run app.py
 ```
 
 L'app è disponibile su <http://localhost:8501>.
+
+## Integrazione Telegram (gestione cubi)
+
+Gli organizer possono collegare il proprio account Telegram per tracciare i sondaggi di partecipazione ai cubi nel gruppo del proprio capitolo e mandare reminder ai non-rispondenti. L'integrazione usa [Telethon](https://docs.telethon.dev/) (account utente via MTProto, non un bot): cosi' ogni organizer agisce con la propria identita' Telegram, gia' presente nei gruppi.
+
+### Setup amministrativo (una volta sola, per il progetto)
+
+1. **Ottieni `api_id` e `api_hash`** su [my.telegram.org/apps](https://my.telegram.org/apps):
+   - Logga con un numero Telegram di tua scelta (puoi usare il tuo).
+   - Vai su "API development tools".
+   - Compila il form: App title `AV Assistant`, short name `av-assistant`, platform `Web`, descrizione libera.
+   - Copia `api_id` (numero) e `api_hash` (stringa esadecimale).
+2. **Genera la chiave Fernet** per cifrare le session degli organizer:
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+   Salva l'output in un posto sicuro: **non va mai ruotata** una volta che ci sono session salvate (le invaliderebbe tutte).
+3. Aggiungi i tre valori in `.streamlit/secrets.toml` (locale) e nei secrets di Streamlit Cloud.
+
+### Onboarding di un organizer
+
+L'organizer logga, va su "I miei attivisti" e apre l'expander **📡 Connetti il tuo Telegram**:
+1. Inserisce numero di telefono in formato internazionale (es. `+39...`) e clicca "Invia codice".
+2. Riceve un codice via Telegram, lo digita e clicca "Verifica codice".
+3. Se ha la 2FA attiva, inserisce anche la password Telegram.
+4. La session viene cifrata e salvata in Firestore (`organizers/{email}.telegram_session_encrypted`). Da quel momento il sistema puo' operare a suo nome su Telegram, finche' non revoca la sessione.
+
+L'organizer puo' disconnettersi in qualunque momento cliccando "Disconnetti Telegram", oppure revocando "AV Assistant" da Telegram > Impostazioni > Dispositivi.
+
+### Configurazione gruppo del capitolo
+
+Stessa pagina, expander **📍 Gruppo Telegram del capitolo**: l'organizer inserisce l'`ID numerico` del gruppo Telegram dove vengono pubblicati i sondaggi dei cubi (di solito un valore negativo lungo, es. `-1001234567890`). Per ottenerlo si puo' usare un bot come `@userinfobot` aggiunto al gruppo, oppure copiare il link a un messaggio del gruppo e leggere l'id dall'URL.
 
 ## Aggiungere un nuovo esperto
 

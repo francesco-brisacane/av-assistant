@@ -1,0 +1,355 @@
+"""
+Modulo Telethon riutilizzabile per il progetto AV.
+
+Responsabilita':
+- Cifrare/decifrare la StringSession Telethon di ogni organizer (Fernet).
+- Esporre il flow di login programmatico (numero -> codice -> eventuale 2FA).
+- Esporre stub asincroni per le operazioni future (resolve_username,
+  get_poll_voters, send_dm) che verranno implementate in Fase 2 e 3.
+
+Convenzioni:
+- Non viene mantenuta nessuna istanza di TelegramClient cacheata fra rerun
+  Streamlit: ogni operazione apre un client fresco da StringSession e lo
+  chiude alla fine. Questo evita problemi con event loop chiusi.
+- Tutte le funzioni "pubbliche" hanno una versione sync che incapsula
+  asyncio.run(...) cosi' da poter essere chiamate direttamente dalle pagine
+  Streamlit (che sono sincrone).
+- I segreti vengono letti da st.secrets. Le funzioni che hanno bisogno
+  di segreti li accettano comunque come parametri espliciti per facilitare
+  i test.
+
+Secrets richiesti in .streamlit/secrets.toml:
+
+    TELEGRAM_API_ID = "12345"                  # numerico, da my.telegram.org
+    TELEGRAM_API_HASH = "abc123..."            # stringa esadecimale
+    TELEGRAM_SESSION_FERNET_KEY = "..."        # chiave Fernet (base64 44 char)
+
+Per generare TELEGRAM_SESSION_FERNET_KEY una volta sola:
+
+    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Optional, Tuple
+
+import streamlit as st
+from cryptography.fernet import Fernet, InvalidToken
+from telethon import TelegramClient
+from telethon.errors import (
+    PhoneCodeInvalidError,
+    PhoneCodeExpiredError,
+    SessionPasswordNeededError,
+    PhoneNumberInvalidError,
+    FloodWaitError,
+)
+from telethon.sessions import StringSession
+
+
+# ---------------------------------------------------------------------------
+# Tipi / Exceptions
+# ---------------------------------------------------------------------------
+
+class TelegramConfigError(RuntimeError):
+    """Sollevata se mancano segreti / parametri di configurazione."""
+
+
+class TelegramLoginError(RuntimeError):
+    """Errore generico durante il flow di login (con messaggio user-friendly)."""
+
+
+# ---------------------------------------------------------------------------
+# Lettura segreti
+# ---------------------------------------------------------------------------
+
+def get_api_credentials() -> Tuple[int, str]:
+    """Ritorna (api_id, api_hash) da st.secrets. Lancia TelegramConfigError se mancano."""
+    try:
+        api_id_raw = st.secrets["TELEGRAM_API_ID"]
+        api_hash = st.secrets["TELEGRAM_API_HASH"]
+    except (KeyError, FileNotFoundError) as e:
+        raise TelegramConfigError(
+            "TELEGRAM_API_ID / TELEGRAM_API_HASH non configurati nei secrets Streamlit."
+        ) from e
+    try:
+        api_id = int(api_id_raw)
+    except (TypeError, ValueError) as e:
+        raise TelegramConfigError("TELEGRAM_API_ID deve essere un intero.") from e
+    return api_id, api_hash
+
+
+def _get_fernet() -> Fernet:
+    try:
+        key = st.secrets["TELEGRAM_SESSION_FERNET_KEY"]
+    except (KeyError, FileNotFoundError) as e:
+        raise TelegramConfigError(
+            "TELEGRAM_SESSION_FERNET_KEY non configurato nei secrets Streamlit."
+        ) from e
+    if isinstance(key, str):
+        key = key.encode("utf-8")
+    try:
+        return Fernet(key)
+    except Exception as e:
+        raise TelegramConfigError("TELEGRAM_SESSION_FERNET_KEY non valido (deve essere una chiave Fernet base64 a 44 caratteri).") from e
+
+
+def is_telegram_configured() -> bool:
+    """True se i tre segreti minimi sono presenti, senza sollevare eccezioni."""
+    try:
+        get_api_credentials()
+        _get_fernet()
+        return True
+    except TelegramConfigError:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Encrypt / Decrypt StringSession
+# ---------------------------------------------------------------------------
+
+def encrypt_session(session_string: str) -> str:
+    """Cifra una StringSession e restituisce il token Fernet (string)."""
+    if not session_string:
+        return ""
+    return _get_fernet().encrypt(session_string.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_session(token: str) -> str:
+    """Decifra una stringa salvata con encrypt_session(). Lancia InvalidToken se corrotta."""
+    if not token:
+        return ""
+    return _get_fernet().decrypt(token.encode("utf-8")).decode("utf-8")
+
+
+def try_decrypt_session(token: str) -> Optional[str]:
+    """Variante non-throwing: ritorna None se il token non e' decifrabile."""
+    if not token:
+        return None
+    try:
+        return decrypt_session(token)
+    except (InvalidToken, TelegramConfigError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Asyncio helper
+# ---------------------------------------------------------------------------
+
+def _run(coro):
+    """
+    Esegue una coroutine in un nuovo event loop.
+
+    Usato per chiamare Telethon (async) da Streamlit (sync). Ogni chiamata crea
+    e chiude un proprio loop -> nessun rischio di state condiviso tra rerun.
+    """
+    try:
+        return asyncio.run(coro)
+    except RuntimeError as e:
+        # Edge case: se Streamlit/altri stanno gia' girando un loop nel main thread,
+        # asyncio.run alza "asyncio.run() cannot be called from a running event loop".
+        if "running event loop" not in str(e):
+            raise
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+
+# ---------------------------------------------------------------------------
+# Login wizard (programmatic flow)
+#
+# Lo state da persistere fra step nel session_state Streamlit:
+#   - phone (str)
+#   - phone_code_hash (str)
+#   - intermediate_session (str)  # StringSession dopo send_code_request
+#   - awaiting_2fa (bool)
+# ---------------------------------------------------------------------------
+
+# Identificatore "dispositivo" che l'organizer vedra' nelle sessioni attive del suo Telegram.
+DEVICE_MODEL = "AV Assistant"
+SYSTEM_VERSION = "Streamlit Cloud"
+APP_VERSION = "1.0"
+
+
+def _new_client(session_string: str = "") -> TelegramClient:
+    api_id, api_hash = get_api_credentials()
+    return TelegramClient(
+        StringSession(session_string),
+        api_id,
+        api_hash,
+        device_model=DEVICE_MODEL,
+        system_version=SYSTEM_VERSION,
+        app_version=APP_VERSION,
+    )
+
+
+async def _send_code_async(phone: str) -> Tuple[str, str]:
+    """Step 1 del login: chiede a Telegram di inviare il codice al numero.
+
+    Ritorna (intermediate_session_string, phone_code_hash).
+    """
+    client = _new_client("")
+    await client.connect()
+    try:
+        sent = await client.send_code_request(phone)
+        intermediate = client.session.save()
+        return intermediate, sent.phone_code_hash
+    finally:
+        await client.disconnect()
+
+
+def send_code(phone: str) -> Tuple[str, str]:
+    """Sync wrapper di _send_code_async. Lancia TelegramLoginError per errori utente noti."""
+    try:
+        return _run(_send_code_async(phone))
+    except PhoneNumberInvalidError as e:
+        raise TelegramLoginError("Numero di telefono non valido. Usa il formato internazionale (es. +39...).") from e
+    except FloodWaitError as e:
+        raise TelegramLoginError(f"Troppi tentativi. Riprova fra {e.seconds} secondi.") from e
+
+
+async def _sign_in_code_async(
+    intermediate_session: str, phone: str, code: str, phone_code_hash: str
+) -> Tuple[str, bool]:
+    """Step 2: usa il codice ricevuto.
+
+    Ritorna (next_session_string, needs_2fa). Se needs_2fa=True, il chiamante
+    deve poi invocare sign_in_password() col token next_session_string.
+    """
+    client = _new_client(intermediate_session)
+    await client.connect()
+    try:
+        try:
+            await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+            return client.session.save(), False
+        except SessionPasswordNeededError:
+            # Il codice e' stato accettato ma serve la password 2FA.
+            return client.session.save(), True
+    finally:
+        await client.disconnect()
+
+
+def sign_in_with_code(
+    intermediate_session: str, phone: str, code: str, phone_code_hash: str
+) -> Tuple[str, bool]:
+    try:
+        return _run(_sign_in_code_async(intermediate_session, phone, code, phone_code_hash))
+    except PhoneCodeInvalidError as e:
+        raise TelegramLoginError("Codice non valido. Controlla e riprova.") from e
+    except PhoneCodeExpiredError as e:
+        raise TelegramLoginError("Codice scaduto. Richiedi un nuovo codice.") from e
+    except FloodWaitError as e:
+        raise TelegramLoginError(f"Troppi tentativi. Riprova fra {e.seconds} secondi.") from e
+
+
+async def _sign_in_password_async(intermediate_session: str, password: str) -> str:
+    client = _new_client(intermediate_session)
+    await client.connect()
+    try:
+        await client.sign_in(password=password)
+        return client.session.save()
+    finally:
+        await client.disconnect()
+
+
+def sign_in_with_password(intermediate_session: str, password: str) -> str:
+    try:
+        return _run(_sign_in_password_async(intermediate_session, password))
+    except FloodWaitError as e:
+        raise TelegramLoginError(f"Troppi tentativi. Riprova fra {e.seconds} secondi.") from e
+    except Exception as e:  # password sbagliata -> Telethon alza Exception generica
+        # Identifichiamo l'errore di password sbagliata via stringa per non legarci a una classe interna.
+        msg = str(e).lower()
+        if "password" in msg:
+            raise TelegramLoginError("Password 2FA errata.") from e
+        raise
+
+
+# ---------------------------------------------------------------------------
+# Stato corrente / logout
+# ---------------------------------------------------------------------------
+
+async def _whoami_async(session_string: str) -> Optional[dict]:
+    """Ritorna informazioni base sull'utente loggato, o None se la session non e' valida."""
+    client = _new_client(session_string)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            return None
+        me = await client.get_me()
+        return {
+            "id": me.id,
+            "username": me.username,
+            "first_name": me.first_name,
+            "last_name": me.last_name,
+            "phone": me.phone,
+        }
+    finally:
+        await client.disconnect()
+
+
+def whoami(session_string: str) -> Optional[dict]:
+    try:
+        return _run(_whoami_async(session_string))
+    except Exception:
+        # Una session revocata / corrotta alza errori vari; trattiamo come "non valido".
+        return None
+
+
+async def _logout_async(session_string: str) -> bool:
+    client = _new_client(session_string)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            return False
+        return await client.log_out()
+    finally:
+        await client.disconnect()
+
+
+def logout(session_string: str) -> bool:
+    """Revoca la sessione lato Telegram. Ritorna True se andato a buon fine."""
+    try:
+        return _run(_logout_async(session_string))
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Stub Fase 2 / Fase 3
+#
+# Queste funzioni hanno la firma definitiva ma sollevano NotImplementedError
+# fino a quando non verranno implementate. Sono qui per fare da contratto.
+# ---------------------------------------------------------------------------
+
+def resolve_username(session_string: str, username: str) -> Optional[dict]:
+    """[Fase 2] Risolve un @username Telegram in {id, username, first_name, last_name}.
+
+    Ritorna None se l'utente non e' raggiungibile (sconosciuto o privacy).
+    """
+    raise NotImplementedError("resolve_username sara' implementato in Fase 2")
+
+
+def get_poll_voters(
+    session_string: str, chat_id: int, message_id: int
+) -> dict:
+    """[Fase 2] Ritorna i votanti di un sondaggio nel formato:
+
+        {
+          "poll_id": int,
+          "is_closed": bool,
+          "options": [
+            {"text": "Si'", "voter_count": 12, "voters": [<user_id>, ...]},
+            ...
+          ],
+          "total_voters": int,
+        }
+    """
+    raise NotImplementedError("get_poll_voters sara' implementato in Fase 2")
+
+
+def send_dm(session_string: str, user_id: int, text: str) -> bool:
+    """[Fase 3] Invia un DM testuale a user_id. Ritorna True se inviato."""
+    raise NotImplementedError("send_dm sara' implementato in Fase 3")

@@ -4,6 +4,19 @@ from firebase_admin import firestore
 import pandas as pd
 import json
 
+from lib.telegram_client import (
+    TelegramConfigError,
+    TelegramLoginError,
+    encrypt_session,
+    is_telegram_configured,
+    logout as tg_logout,
+    send_code as tg_send_code,
+    sign_in_with_code as tg_sign_in_with_code,
+    sign_in_with_password as tg_sign_in_with_password,
+    try_decrypt_session,
+    whoami as tg_whoami,
+)
+
 def load_json(filepath):
     try:
         with open(filepath, "r", encoding="utf-8") as f:
@@ -94,10 +107,170 @@ doc = doc_ref.get()
 if doc.exists:
     data = doc.to_dict()
     activists = data.get("activists", [])
+    telegram_session_encrypted = data.get("telegram_session_encrypted", "")
+    telegram_chat_id_saved = data.get("telegram_chat_id", "")
+    telegram_chat_title_saved = data.get("telegram_chat_title", "")
 else:
     activists = []
+    telegram_session_encrypted = ""
+    telegram_chat_id_saved = ""
+    telegram_chat_title_saved = ""
     # Crea il documento vuoto se non esiste
     doc_ref.set({"activists": []})
+
+# 4.5 SEZIONE INTEGRAZIONE TELEGRAM
+st.markdown("---")
+with st.expander(f"📡 {current_i18n.get('tg_section_title', 'Connect your Telegram')}", expanded=False):
+    st.write(current_i18n.get("tg_section_desc", ""))
+
+    if not is_telegram_configured():
+        st.warning(current_i18n.get("tg_not_configured", "Telegram integration not yet configured by the administrator."))
+    else:
+        # Stato attuale: prova a decifrare la session salvata e verifica
+        existing_session = try_decrypt_session(telegram_session_encrypted)
+        me = None
+        if existing_session:
+            with st.spinner("..."):
+                me = tg_whoami(existing_session)
+
+        if me:
+            # Caso: gia' connesso
+            who_str = ("@" + me["username"]) if me.get("username") else (me.get("first_name") or str(me.get("id")))
+            st.success(current_i18n.get("tg_status_connected", "Connected as {who}").replace("{who}", who_str))
+            col_d1, _ = st.columns([2, 6])
+            if col_d1.button(f"🔌 {current_i18n.get('tg_btn_disconnect', 'Disconnect Telegram')}", key="tg_btn_disconnect"):
+                with st.spinner("..."):
+                    tg_logout(existing_session)
+                doc_ref.set({"telegram_session_encrypted": ""}, merge=True)
+                for k in ("tg_step", "tg_phone", "tg_phone_code_hash", "tg_intermediate_session"):
+                    st.session_state.pop(k, None)
+                st.success(current_i18n.get("tg_disconnect_success", "Telegram disconnected."))
+                st.rerun()
+        else:
+            # Caso: non connesso, oppure session non piu' valida
+            if telegram_session_encrypted and existing_session is None:
+                st.warning(current_i18n.get("tg_session_invalid", "Saved Telegram session no longer valid. Please reconnect."))
+            else:
+                st.info(current_i18n.get("tg_status_disconnected", "Telegram not connected."))
+
+            st.caption(current_i18n.get("tg_privacy_warning", ""))
+
+            step = st.session_state.get("tg_step")
+
+            if step in (None, "phone"):
+                phone_input = st.text_input(
+                    current_i18n.get("tg_phone_label", "Phone number"),
+                    key="tg_phone_input",
+                    placeholder="+39...",
+                )
+                if st.button(f"📨 {current_i18n.get('tg_btn_send_code', 'Send code')}", key="tg_btn_send_code"):
+                    if not phone_input.strip():
+                        st.error(current_i18n.get("form_mandatory_fields", "All fields are mandatory."))
+                    else:
+                        try:
+                            with st.spinner("..."):
+                                inter_session, code_hash = tg_send_code(phone_input.strip())
+                            st.session_state.tg_phone = phone_input.strip()
+                            st.session_state.tg_phone_code_hash = code_hash
+                            st.session_state.tg_intermediate_session = inter_session
+                            st.session_state.tg_step = "code"
+                            st.rerun()
+                        except TelegramLoginError as e:
+                            st.error(current_i18n.get("tg_generic_error", "Telegram error: {error}").replace("{error}", str(e)))
+                        except TelegramConfigError as e:
+                            st.error(str(e))
+
+            elif step == "code":
+                st.info(current_i18n.get("tg_code_sent", "Code sent via Telegram."))
+                code_input = st.text_input(
+                    current_i18n.get("tg_code_label", "Code received"),
+                    key="tg_code_input",
+                    max_chars=10,
+                )
+                col_c1, col_c2, _ = st.columns([2, 2, 6])
+                if col_c1.button(f"✅ {current_i18n.get('tg_btn_verify_code', 'Verify code')}", key="tg_btn_verify_code"):
+                    try:
+                        with st.spinner("..."):
+                            next_session, needs_2fa = tg_sign_in_with_code(
+                                st.session_state.tg_intermediate_session,
+                                st.session_state.tg_phone,
+                                code_input.strip(),
+                                st.session_state.tg_phone_code_hash,
+                            )
+                        if needs_2fa:
+                            st.session_state.tg_intermediate_session = next_session
+                            st.session_state.tg_step = "password"
+                            st.rerun()
+                        else:
+                            enc = encrypt_session(next_session)
+                            doc_ref.set({"telegram_session_encrypted": enc}, merge=True)
+                            for k in ("tg_step", "tg_phone", "tg_phone_code_hash", "tg_intermediate_session"):
+                                st.session_state.pop(k, None)
+                            st.success(current_i18n.get("tg_login_success", "Telegram connected successfully!"))
+                            st.rerun()
+                    except TelegramLoginError as e:
+                        st.error(current_i18n.get("tg_generic_error", "Telegram error: {error}").replace("{error}", str(e)))
+                if col_c2.button(f"❌ {current_i18n.get('tg_btn_cancel_login', 'Cancel')}", key="tg_btn_cancel_code"):
+                    for k in ("tg_step", "tg_phone", "tg_phone_code_hash", "tg_intermediate_session"):
+                        st.session_state.pop(k, None)
+                    st.rerun()
+
+            elif step == "password":
+                st.info(current_i18n.get("tg_2fa_prompt", "Enter your 2FA password."))
+                pwd_input = st.text_input(
+                    current_i18n.get("tg_password_label", "2FA password"),
+                    key="tg_password_input",
+                    type="password",
+                )
+                col_p1, col_p2, _ = st.columns([2, 2, 6])
+                if col_p1.button(f"✅ {current_i18n.get('tg_btn_verify_password', 'Verify password')}", key="tg_btn_verify_password"):
+                    try:
+                        with st.spinner("..."):
+                            final_session = tg_sign_in_with_password(
+                                st.session_state.tg_intermediate_session,
+                                pwd_input,
+                            )
+                        enc = encrypt_session(final_session)
+                        doc_ref.set({"telegram_session_encrypted": enc}, merge=True)
+                        for k in ("tg_step", "tg_phone", "tg_phone_code_hash", "tg_intermediate_session"):
+                            st.session_state.pop(k, None)
+                        st.success(current_i18n.get("tg_login_success", "Telegram connected successfully!"))
+                        st.rerun()
+                    except TelegramLoginError as e:
+                        st.error(current_i18n.get("tg_generic_error", "Telegram error: {error}").replace("{error}", str(e)))
+                if col_p2.button(f"❌ {current_i18n.get('tg_btn_cancel_login', 'Cancel')}", key="tg_btn_cancel_password"):
+                    for k in ("tg_step", "tg_phone", "tg_phone_code_hash", "tg_intermediate_session"):
+                        st.session_state.pop(k, None)
+                    st.rerun()
+
+# 4.6 SEZIONE GRUPPO TELEGRAM DEL CAPITOLO
+with st.expander(f"📍 {current_i18n.get('chapter_section_title', 'Chapter Telegram group')}", expanded=False):
+    st.write(current_i18n.get("chapter_section_desc", ""))
+    with st.form("chapter_form", clear_on_submit=False):
+        chat_id_input = st.text_input(
+            current_i18n.get("chapter_chat_id_label", "Telegram group chat ID"),
+            value=telegram_chat_id_saved,
+            help=current_i18n.get("chapter_chat_id_help", ""),
+        )
+        chat_title_input = st.text_input(
+            current_i18n.get("chapter_chat_title_label", "Group name"),
+            value=telegram_chat_title_saved,
+        )
+        chapter_submitted = st.form_submit_button(
+            current_i18n.get("chapter_btn_save", "Save group configuration")
+        )
+        if chapter_submitted:
+            try:
+                doc_ref.set({
+                    "telegram_chat_id": chat_id_input.strip(),
+                    "telegram_chat_title": chat_title_input.strip(),
+                }, merge=True)
+                st.success(current_i18n.get("chapter_saved_success", "Chapter group configuration saved."))
+                st.rerun()
+            except Exception as e:
+                st.error(f"{current_i18n.get('save_error', 'Save error:')} {e}")
+
+st.markdown("---")
 
 if activists:
     df = pd.DataFrame(activists)
@@ -109,9 +282,10 @@ if activists:
     c_telefono = current_i18n.get("table_phone", "Telefono")
     c_provincia = current_i18n.get("table_province", "Provincia")
     c_note = current_i18n.get("table_notes", "Note")
-    
+    c_telegram = current_i18n.get("table_telegram", "Telegram")
+
     # Assicurati che le colonne esistano nel DF, altrimenti metti stringa vuota
-    for col in ["data_ingresso", "telefono", "provincia", "note"]:
+    for col in ["data_ingresso", "telefono", "provincia", "note", "telegram_username"]:
         if col not in df.columns:
             df[col] = ""
 
@@ -120,16 +294,17 @@ if activists:
         df["data_ingresso"] = pd.to_datetime(df["data_ingresso"], errors='coerce')
 
     df = df.rename(columns={
-        "nome": c_nome, 
-        "cognome": c_cognome, 
+        "nome": c_nome,
+        "cognome": c_cognome,
         "email": c_email,
         "data_ingresso": c_data_ingresso,
         "telefono": c_telefono,
         "provincia": c_provincia,
-        "note": c_note
+        "note": c_note,
+        "telegram_username": c_telegram
     })
-    
-    cols_to_show = [c_nome, c_cognome, c_email, c_data_ingresso, c_telefono, c_provincia, c_note]
+
+    cols_to_show = [c_nome, c_cognome, c_email, c_telegram, c_data_ingresso, c_telefono, c_provincia, c_note]
     existing_cols_to_show = [c for c in cols_to_show if c in df.columns]
     df = df[existing_cols_to_show]
         
@@ -144,6 +319,7 @@ if activists:
         selection_mode="multi-row",
         column_config={
             c_email: st.column_config.TextColumn(width="medium"),
+            c_telegram: st.column_config.TextColumn(width="small"),
             c_data_ingresso: st.column_config.DateColumn(format="DD/MM/YYYY"),
             c_note: st.column_config.TextColumn(width="large", help="Note sull'attivista")
         }
@@ -191,7 +367,13 @@ if activists:
                 edit_cognome = st.text_input(current_i18n.get("form_surname", "Cognome"), value=act.get("cognome", ""), max_chars=50)
                 edit_telefono = st.text_input(current_i18n.get("form_phone", "Telefono"), value=act.get("telefono", ""), max_chars=20)
                 edit_email = st.text_input(current_i18n.get("form_email", "Email (Google Account)"), value=act.get("email", ""), max_chars=100, disabled=True)
-            
+
+            edit_telegram = st.text_input(
+                current_i18n.get("form_telegram", "Telegram username (senza @)"),
+                value=act.get("telegram_username", ""),
+                max_chars=50,
+                help=current_i18n.get("form_telegram_help", ""),
+            )
             edit_note = st.text_area(current_i18n.get("form_notes", "Note"), value=act.get("note", ""))
             
             c1, c2, _ = st.columns([2, 2, 6])
@@ -206,7 +388,8 @@ if activists:
                     "data_ingresso": edit_data_ingresso.strftime("%Y-%m-%d") if edit_data_ingresso else "",
                     "telefono": edit_telefono.strip(),
                     "provincia": edit_provincia.strip(),
-                    "note": edit_note.strip()
+                    "note": edit_note.strip(),
+                    "telegram_username": edit_telegram.strip().lstrip("@"),
                 }
                 
                 try:
@@ -316,7 +499,12 @@ with st.form("add_activist_form", clear_on_submit=True):
         new_cognome = st.text_input(current_i18n.get("form_surname", "Cognome"), max_chars=50)
         new_telefono = st.text_input(current_i18n.get("form_phone", "Telefono"), max_chars=20)
         new_email = st.text_input(current_i18n.get("form_email", "Email (Google Account)"), max_chars=100)
-    
+
+    new_telegram = st.text_input(
+        current_i18n.get("form_telegram", "Telegram username (senza @)"),
+        max_chars=50,
+        help=current_i18n.get("form_telegram_help", ""),
+    )
     new_note = st.text_area(current_i18n.get("form_notes", "Note"))
     
     submitted = st.form_submit_button(current_i18n.get("form_add_button", "Aggiungi"))
@@ -342,7 +530,8 @@ with st.form("add_activist_form", clear_on_submit=True):
                     "data_ingresso": new_data_ingresso.strftime("%Y-%m-%d") if new_data_ingresso else "",
                     "telefono": new_telefono.strip(),
                     "provincia": new_provincia.strip(),
-                    "note": new_note.strip()
+                    "note": new_note.strip(),
+                    "telegram_username": new_telegram.strip().lstrip("@"),
                 }
                 
                 try:

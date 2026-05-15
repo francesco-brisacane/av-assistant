@@ -24,9 +24,44 @@ Tutto ciò che riguarda gli "esperti" (chatbot) è dichiarativo:
 ## Firebase / Firestore
 
 Init in `pages/chat.py` da `st.secrets["firebase"]`. Collezioni:
-- `users/{email}` — `{ profiles: [...], nome, cognome, ... }`. Profili noti: `admin`, `org`, `activist`.
+- `users/{email}` — `{ profiles: [...], nome, cognome, ... }`. Profili noti: `admin`, `org`, `activist`. Eventuali campi futuri: `telegram_user_id`, `telegram_username` (popolati lazy in Fase 2).
 - `active_chats/{user_id}` — chat live per cookie `av_user_id` (UUID per utente, anche anonimo).
 - `profiled_chats/{chat_id}` — log permanente (solo per esperti con `authorizedProfiles` non vuoto + utente loggato).
+- `organizers/{org_email}` — `{ activists: [{nome, cognome, email, data_ingresso, telefono, provincia, note, telegram_username}, ...], telegram_session_encrypted, telegram_chat_id, telegram_chat_title }`. La collezione modella anche il "capitolo" implicito: l'array `activists` sono gli attivisti del capitolo gestito da quell'organizer; i campi `telegram_*` configurano l'integrazione Telegram del capitolo (vedi sezione apposita).
+
+## Integrazione Telegram (Cubi)
+
+Feature aggiunta per aiutare gli organizer a tracciare i sondaggi di partecipazione ai cubi nei loro gruppi Telegram e a sollecitare i non-rispondenti.
+
+**Architettura**: usiamo [Telethon](https://docs.telethon.dev/) (MTProto, account utente, non bot) per due ragioni: 1) leggere lo stato corrente di un sondaggio retroattivamente, cosa non possibile via Bot API senza webhook; 2) usare l'account Telegram di ciascun organizer (che e' gia' nei suoi gruppi) invece di un bot da aggiungere ovunque.
+
+**Modello dati Telegram-related**:
+- `organizers/{email}.telegram_session_encrypted` — `StringSession` Telethon cifrata con Fernet (chiave in `st.secrets`). Permette di agire come quell'organizer su Telegram.
+- `organizers/{email}.telegram_chat_id` / `telegram_chat_title` — gruppo Telegram del capitolo.
+- `organizers/{email}.activists[i].telegram_username` — handle Telegram dell'attivista (senza @), inserito manualmente dall'organizer.
+
+**Libreria condivisa**: [lib/telegram_client.py](lib/telegram_client.py) — espone:
+- `is_telegram_configured()`, `encrypt_session`, `try_decrypt_session`.
+- Wizard programmatic login: `send_code(phone)` → `sign_in_with_code(...)` → opzionale `sign_in_with_password(...)` se 2FA. Tra step lo state vive in `st.session_state` (`tg_step`, `tg_phone`, `tg_phone_code_hash`, `tg_intermediate_session`).
+- `whoami(session)`, `logout(session)`.
+- Stub per Fase 2/3: `resolve_username`, `get_poll_voters`, `send_dm` (raise NotImplementedError).
+
+**Constraint Telegram da tenere a mente**:
+- I sondaggi che vogliamo tracciare devono essere **non-anonimi** (Telegram non espone i votanti dei poll anonimi).
+- La `StringSession` equivale a un login completo Telegram: trattarla come un secret. Cifrata at-rest con Fernet, mai loggata.
+- Telethon e' async: tutte le chiamate vanno via `lib.telegram_client._run(coro)` che incapsula `asyncio.run`. Ogni operazione crea/distrugge il proprio `TelegramClient` (no caching tra rerun).
+- Il primo login per organizer avviene dal wizard in `pages/1_I_Miei_Attivisti.py`. L'organizer vedra' un nuovo dispositivo "AV Assistant" nelle sue sessioni Telegram; puo' revocarlo in qualunque momento — la prossima `whoami` ritornera' `None` e l'app gli chiedera' di rifare login.
+
+**Secrets necessari** (in `.streamlit/secrets.toml` e su Streamlit Cloud):
+- `TELEGRAM_API_ID` (int) — da [my.telegram.org/apps](https://my.telegram.org/apps).
+- `TELEGRAM_API_HASH` (str) — idem.
+- `TELEGRAM_SESSION_FERNET_KEY` — chiave Fernet base64 a 44 caratteri. Generala una volta sola con: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. **Mai cambiarla**: cifra le session degli organizer, ruotarla le invalida tutte.
+
+**Roadmap fasi**:
+- Fase 1 (corrente): infrastruttura + wizard login + campi Telegram in I Miei Attivisti.
+- Fase 2: pagina "Gestione Cubi" con CRUD eventi + lettura sondaggi via Telethon.
+- Fase 3: invio DM reminder via Telethon (FloodWait awareness, fallback link `t.me/<username>`).
+- Fase 4: storico partecipazioni aggregato.
 
 ## Auth & profili
 
