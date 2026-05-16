@@ -656,6 +656,13 @@ async def _get_poll_voters_async(
                 option=ans.option,
                 limit=per_option_limit,
             ))
+            # Build user_id -> voted_at map dai MessagePeerVote
+            vote_dates = {}
+            for vote in (getattr(vot_res, "votes", []) or []):
+                vpeer = getattr(vote, "peer", None)
+                vuid = getattr(vpeer, "user_id", None) if vpeer is not None else None
+                if isinstance(vuid, int):
+                    vote_dates[vuid] = getattr(vote, "date", None)
             voter_list = []
             for u in getattr(vot_res, "users", []) or []:
                 voter_list.append({
@@ -663,6 +670,7 @@ async def _get_poll_voters_async(
                     "username": getattr(u, "username", None),
                     "first_name": getattr(u, "first_name", "") or "",
                     "last_name": getattr(u, "last_name", "") or "",
+                    "voted_at": vote_dates.get(u.id),
                 })
             options_data.append({
                 "idx": i,

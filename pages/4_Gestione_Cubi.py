@@ -363,6 +363,7 @@ def compute_participations(activists_list, options_with_voters):
                     "option_idx": opt["idx"],
                     "option_text": opt["text"],
                     "telegram_user_id": vid,
+                    "voted_at": v.get("voted_at"),
                 }
                 if vid:
                     matched_user_ids.add(vid)
@@ -379,6 +380,7 @@ def compute_participations(activists_list, options_with_voters):
                 "last_name": v.get("last_name", ""),
                 "option_idx": opt["idx"],
                 "option_text": opt["text"],
+                "voted_at": v.get("voted_at"),
             })
 
     return participations, outside
@@ -663,6 +665,7 @@ def render_event(ev):
                     "Telegram": "—",
                     "Stato": "⚠️ " + t("cubes_status_no_username", "No Telegram"),
                     "Opzione": "",
+                    t("cubes_col_voted_at", "Data voto"): "",
                 })
                 continue
             part = participations.get(email)
@@ -674,16 +677,26 @@ def render_event(ev):
                     "Telegram": "@" + uname,
                     "Stato": "⏳ " + t("cubes_status_no_response", "Non risposto"),
                     "Opzione": "",
+                    t("cubes_col_voted_at", "Data voto"): "",
                 })
             else:
                 cat = cat_by_idx.get(part.get("option_idx"), "ignore")
                 counters[cat] = counters.get(cat, 0) + 1
+                voted_at = part.get("voted_at")
+                if voted_at:
+                    try:
+                        voted_str = voted_at.strftime("%Y-%m-%d %H:%M") if hasattr(voted_at, "strftime") else str(voted_at)
+                    except Exception:
+                        voted_str = ""
+                else:
+                    voted_str = ""
                 rows.append({
                     "Nome": nome,
                     "Cognome": cognome,
                     "Telegram": "@" + uname,
                     "Stato": category_label(cat),
                     "Opzione": part.get("option_text", ""),
+                    t("cubes_col_voted_at", "Data voto"): voted_str,
                 })
 
         # Riepilogo contatori
@@ -705,10 +718,19 @@ def render_event(ev):
                 out_rows = []
                 for o in outside:
                     name = (o.get("first_name") or "") + (" " + (o.get("last_name") or "") if o.get("last_name") else "")
+                    ov = o.get("voted_at")
+                    if ov:
+                        try:
+                            ov_s = ov.strftime("%Y-%m-%d %H:%M") if hasattr(ov, "strftime") else str(ov)
+                        except Exception:
+                            ov_s = ""
+                    else:
+                        ov_s = ""
                     out_rows.append({
                         "Nome": name.strip() or "?",
                         "Telegram": ("@" + o["username"]) if o.get("username") else "—",
                         "Opzione": o.get("option_text", ""),
+                        t("cubes_col_voted_at", "Data voto"): ov_s,
                     })
                 st.dataframe(pd.DataFrame(out_rows), hide_index=True, use_container_width=True)
 

@@ -6,7 +6,7 @@ Guida per Claude Code per lavorare su questo progetto. Il progetto è di **Anony
 
 - **Entry point**: [app.py](app.py) — definisce le `st.Page` e la navigazione condizionata dai profili utente. Le pagine in [pages/](pages/) **non** sono auto-discoverate: la sidebar nativa di Streamlit è nascosta via CSS (`stSidebarNav { display: none }`) e l'unica navigazione visibile è quella costruita in `app.py`.
 - **Chat principale**: [pages/chat.py](pages/chat.py) — un unico file che gestisce caricamento config, cookie utente, login Google, selezione esperto, rendering settings, costruzione system prompt, dispatch del provider LLM (Groq / Gemini / OpenRouter), streaming risposta, persistenza Firestore. Quando si aggiunge una feature alla chat, **quasi sempre si tocca questo file**.
-- **Pagine admin/org** ([pages/1_I_Miei_Attivisti.py](pages/1_I_Miei_Attivisti.py), [pages/2_Gestione_Organizzatori.py](pages/2_Gestione_Organizzatori.py), [pages/3_Chat_Attivisti.py](pages/3_Chat_Attivisti.py), [pages/4_Gestione_Cubi.py](pages/4_Gestione_Cubi.py)) — gestione utenti / capitoli / visualizzazione chat profilate / gestione eventi cubo. Visibili solo a profili `org` / `admin` / `activist` (vedi `app.py` per la logica).
+- **Pagine admin/org** ([pages/1_I_Miei_Attivisti.py](pages/1_I_Miei_Attivisti.py), [pages/2_Gestione_Organizzatori.py](pages/2_Gestione_Organizzatori.py), [pages/3_Chat_Attivisti.py](pages/3_Chat_Attivisti.py), [pages/4_Gestione_Cubi.py](pages/4_Gestione_Cubi.py), [pages/5_Storico_Partecipazioni.py](pages/5_Storico_Partecipazioni.py)) — gestione utenti / capitoli / chat profilate / gestione eventi cubo / storico partecipazioni aggregato. Visibili solo a profili `org` / `admin` / `activist` (vedi `app.py` per la logica).
 
 ## Configurazione (data-driven)
 
@@ -77,7 +77,7 @@ Quando l'organizer salva la mappatura manualmente (form "Salva mappatura"), `rem
 - Fase 1 (✅ completata): infrastruttura + wizard login + campi Telegram in I Miei Attivisti.
 - Fase 2 (✅ completata): pagina "Gestione Cubi" con CRUD eventi + lettura sondaggi via Telethon, dashboard partecipazioni con refresh on-demand.
 - Fase 3 (✅ completata): invio DM reminder via Telethon dal client dell'organizer, con template personalizzabile (placeholder {nome}/{cognome}/{data}/{ora}/{luogo}/{poll_link}), pre-spunta automatica dei non-rispondenti, opt-in per i 'Forse', invio sequenziale con delay anti-FloodWait, fallback link `t.me/<username>` quando il DM e' bloccato (privacy/blocked/deactivated). Include sincronizzazione `telegram_user_id` da numero di telefono via `contacts.ResolvePhoneRequest` (bottone manuale in I Miei Attivisti), e match dei votanti che usa user_id come chiave canonica prima dell'username.
-- Fase 4 (pending): storico partecipazioni aggregato.
+- Fase 4 (✅ completata): pagina 'Storico Partecipazioni' con filtri periodo (30/90/365/tutto), tabella per attivista (invitati / partecipato / non risposto / % / ultimo cubo / ultima attivita'), statistiche capitolo (media partecipanti, tasso partecipazione, tasso risposta), grafico trend mensile, export CSV. Considera solo cubi con poll_link e categoria 'yes' come partecipazione effettiva.
 
 ## Auth & profili
 
