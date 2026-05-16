@@ -324,13 +324,20 @@ def remember_mappings(current_memory: dict, poll_options_with_categories) -> dic
 
 
 def compute_participations(activists_list, options_with_voters):
-    """Match votanti -> attivisti per username; ritorna (participations, outside_voters).
+    """Match votanti -> attivisti, prima per telegram_user_id (canonico, infallibile),
+    poi per telegram_username (fallback).
 
+    Ritorna (participations, outside_voters).
     participations: dict keyed by activist email.
-    outside_voters: list of dicts per chi ha votato ma non e' nella lista attivisti.
+    outside_voters: list di dict per chi ha votato ma non e' nella lista attivisti.
     """
+    # Index attivisti per user_id (priorita') e per username (fallback)
+    by_user_id = {}
     by_username = {}
     for a in activists_list:
+        uid = a.get("telegram_user_id")
+        if isinstance(uid, int) and uid > 0:
+            by_user_id[uid] = a
         uname = (a.get("telegram_username") or "").strip().lower().lstrip("@")
         if uname:
             by_username[uname] = a
@@ -339,18 +346,26 @@ def compute_participations(activists_list, options_with_voters):
     matched_user_ids = set()
     for opt in options_with_voters:
         for v in opt.get("voters", []):
+            vid = v.get("user_id")
             vuname = (v.get("username") or "").strip().lower()
-            if vuname and vuname in by_username:
+            # Match priority: user_id > username
+            act = None
+            if isinstance(vid, int) and vid in by_user_id:
+                act = by_user_id[vid]
+            elif vuname and vuname in by_username:
                 act = by_username[vuname]
-                # Se vota piu' opzioni (multiple_choice), prendiamo la prima trovata
-                if act["email"] not in participations:
-                    participations[act["email"]] = {
-                        "voted": True,
-                        "option_idx": opt["idx"],
-                        "option_text": opt["text"],
-                        "telegram_user_id": v.get("user_id"),
-                    }
-                    matched_user_ids.add(v.get("user_id"))
+            if act is None:
+                continue
+            # Se vota piu' opzioni (multiple_choice), prendiamo la prima trovata
+            if act["email"] not in participations:
+                participations[act["email"]] = {
+                    "voted": True,
+                    "option_idx": opt["idx"],
+                    "option_text": opt["text"],
+                    "telegram_user_id": vid,
+                }
+                if vid:
+                    matched_user_ids.add(vid)
 
     outside = []
     for opt in options_with_voters:
@@ -705,9 +720,10 @@ def render_event(ev):
                 rcp_parts = ev.get("participations", {})
                 rcp_sent = ev.get("reminders_sent", {})
                 candidates = []
-                skipped_no_username = []
+                skipped_unreachable = []
                 for a in activists:
                     uname_r = (a.get("telegram_username") or "").strip().lstrip("@")
+                    uid_r = a.get("telegram_user_id")
                     email_r = a.get("email", "")
                     nome_r = a.get("nome", "")
                     cogn_r = a.get("cognome", "")
@@ -718,19 +734,21 @@ def render_event(ev):
                             continue
                     else:
                         status_cat_r = "no_response"
-                    if not uname_r:
-                        skipped_no_username.append({"nome": nome_r, "cognome": cogn_r, "email": email_r, "status_cat": status_cat_r})
+                    # Raggiungibile se abbiamo user_id (canonico) o username
+                    if not uname_r and not (isinstance(uid_r, int) and uid_r > 0):
+                        skipped_unreachable.append({"nome": nome_r, "cognome": cogn_r, "email": email_r, "status_cat": status_cat_r})
                         continue
                     candidates.append({
                         "email": email_r,
                         "nome": nome_r,
                         "cognome": cogn_r,
                         "username": uname_r,
+                        "user_id": uid_r if isinstance(uid_r, int) else None,
                         "status_cat": status_cat_r,
                         "last_sent": rcp_sent.get(email_r, {}).get("sent_at"),
                     })
 
-                if not candidates and not skipped_no_username:
+                if not candidates and not skipped_unreachable:
                     st.info(t("reminders_no_recipients", "Nessun destinatario raggiungibile."))
                 else:
                     include_maybe = st.checkbox(
@@ -756,13 +774,16 @@ def render_event(ev):
                             status_human = "⏳ " + t("cubes_status_no_response", "Non risposto")
                         else:
                             status_human = category_label(c["status_cat"])
-                        label_cb = f"{c['nome']} {c['cognome']}  —  @{c['username']}  ({status_human}){suffix}"
+                        # Identificativo Telegram nella label: @username se c'e', altrimenti id numerico
+                        tg_ident = ("@" + c["username"]) if c.get("username") else (f"id:{c['user_id']}" if c.get("user_id") else "?")
+                        label_cb = f"{c['nome']} {c['cognome']}  —  {tg_ident}  ({status_human}){suffix}"
                         if st.checkbox(label_cb, value=default_sel, key=f"{key_prefix}_rcp_{c['email']}"):
                             selected_emails.append(c["email"])
 
-                    if skipped_no_username:
-                        with st.expander(f"⚠️ {t('reminders_skipped_no_username', 'Saltati (no username)')} ({len(skipped_no_username)})"):
-                            for s in skipped_no_username:
+                    if skipped_unreachable:
+                        with st.expander(f"⚠️ {t('reminders_skipped_unreachable', 'Non raggiungibili')} ({len(skipped_unreachable)})"):
+                            st.caption(t("reminders_skipped_hint", "Questi attivisti non hanno ne' username ne' user_id Telegram. Aggiungi un username dalla pagina 'I Miei Attivisti', oppure lancia la sincronizzazione da numeri."))
+                            for s in skipped_unreachable:
                                 st.write(f"- {s['nome']} {s['cognome']} ({s['email']})")
 
                     template_val = st.text_area(
@@ -800,16 +821,19 @@ def render_event(ev):
                             )
                             personalized = render_reminder_template(template_val, rcp, ev)
                             try:
-                                res = send_dm(session_string, rcp["username"], personalized)
+                                # Preferisce user_id (canonico) se cached, altrimenti username
+                                tg_recipient = rcp.get("user_id") or rcp.get("username")
+                                res = send_dm(session_string, tg_recipient, personalized)
                             except TelegramOperationError as exc:
                                 results.append({
                                     "email": rcp["email"],
                                     "nome": rcp["nome"],
                                     "cognome": rcp["cognome"],
-                                    "username": rcp["username"],
+                                    "username": rcp.get("username"),
+                                    "user_id": rcp.get("user_id"),
                                     "ok": False,
                                     "error": str(exc),
-                                    "fallback_link": f"https://t.me/{rcp['username']}",
+                                    "fallback_link": (f"https://t.me/{rcp['username']}" if rcp.get("username") else None),
                                 })
                                 progress.error(t("reminders_aborted", "Interrotto: {err}").replace("{err}", str(exc)))
                                 break
@@ -817,11 +841,11 @@ def render_event(ev):
                                 "email": rcp["email"],
                                 "nome": rcp["nome"],
                                 "cognome": rcp["cognome"],
-                                "username": rcp["username"],
+                                "username": rcp.get("username") or res.get("username"),
                                 "ok": res.get("ok", False),
                                 "error": res.get("error"),
                                 "fallback_link": res.get("fallback_link"),
-                                "user_id": res.get("user_id"),
+                                "user_id": res.get("user_id") or rcp.get("user_id"),
                             })
                             _time.sleep(1.2)
 
@@ -876,7 +900,7 @@ def render_event(ev):
                             fb = r.get("fallback_link") or ""
                             result_rows.append({
                                 t("reminders_table_name", "Nome"): f"{r['nome']} {r['cognome']}",
-                                t("reminders_table_telegram", "Telegram"): "@" + r["username"],
+                                t("reminders_table_telegram", "Telegram"): ("@" + r["username"]) if r.get("username") else (f"id:{r['user_id']}" if r.get("user_id") else "—"),
                                 t("reminders_table_result", "Risultato"): res_label,
                                 t("reminders_fallback_link", "Apri chat"): fb,
                             })

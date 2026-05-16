@@ -165,7 +165,18 @@
         "reminders_table_result": "Result",
         "reminders_fallback_link": "Open Telegram chat",
         "reminders_aborted": "Aborted: {err}",
-        "reminders_skipped_no_username": "Skipped (no Telegram username)"
+        "reminders_skipped_no_username": "Skipped (no Telegram username)",
+        "phone_sync_title": "Sync Telegram from phone numbers",
+        "phone_sync_desc": "For each activist with a phone number but no Telegram username, try to resolve via the phone number. Useful for those without a public @username.",
+        "phone_sync_nothing_to_do": "Nothing to sync (all activists already have a Telegram user_id, or no phone numbers to normalize).",
+        "phone_sync_will_process": "Will process {n} activists.",
+        "phone_sync_btn": "Start sync",
+        "phone_sync_progress": "Syncing {n}/{total} — {name}",
+        "phone_sync_done": "Sync completed: {ok} OK, {fail} failed.",
+        "phone_sync_unnormalizable": "Unnormalizable phone numbers",
+        "phone_sync_unnormalizable_hint": "Edit the activist and fix the phone in format +39... or 320XXXXXXX.",
+        "reminders_skipped_unreachable": "Unreachable",
+        "reminders_skipped_hint": "These activists have neither a Telegram username nor a cached user_id. Add a username from 'My Activists', or run the phone-based sync."
     },
     "IT": {
         "login_required": "Devi effettuare il login per accedere a questa pagina.",
@@ -333,6 +344,17 @@
         "reminders_table_result": "Risultato",
         "reminders_fallback_link": "Apri chat Telegram",
         "reminders_aborted": "Interrotto: {err}",
-        "reminders_skipped_no_username": "Saltato (username Telegram mancante)"
+        "reminders_skipped_no_username": "Saltato (username Telegram mancante)",
+        "phone_sync_title": "Sincronizza Telegram da numeri",
+        "phone_sync_desc": "Per ogni attivista con numero di telefono ma senza username Telegram, prova a risolvere via il numero. Utile per chi non ha un @username pubblico.",
+        "phone_sync_nothing_to_do": "Nessun attivista da risolvere (tutti gia' hanno user_id Telegram o numero non normalizzabile).",
+        "phone_sync_will_process": "Saranno processati {n} attivisti.",
+        "phone_sync_btn": "Avvia sincronizzazione",
+        "phone_sync_progress": "Sincronizzo {n}/{total} — {name}",
+        "phone_sync_done": "Sincronizzazione completata: {ok} OK, {fail} falliti.",
+        "phone_sync_unnormalizable": "Numeri non normalizzabili",
+        "phone_sync_unnormalizable_hint": "Modifica l'attivista e correggi il numero in formato +39... o 320XXXXXXX.",
+        "reminders_skipped_unreachable": "Non raggiungibili",
+        "reminders_skipped_hint": "Questi attivisti non hanno ne' username ne' user_id Telegram. Aggiungi un username dalla pagina 'I Miei Attivisti', oppure lancia la sincronizzazione da numeri."
     }
 }

@@ -47,6 +47,7 @@ from telethon.errors import (
     PeerIdInvalidError,
     PhoneCodeExpiredError,
     PhoneCodeInvalidError,
+    PhoneNotOccupiedError,
     PhoneNumberInvalidError,
     PollVoteRequiredError,
     SessionPasswordNeededError,
@@ -58,6 +59,7 @@ from telethon.errors import (
     YouBlockedUserError,
 )
 from telethon.sessions import StringSession
+from telethon.tl.functions.contacts import ResolvePhoneRequest
 from telethon.tl.functions.messages import GetPollVotesRequest
 from telethon.tl.types import MessageMediaPoll
 
@@ -447,6 +449,109 @@ def resolve_username(session_string: str, username: str) -> Optional[dict]:
         raise TelegramOperationError(f"Telegram rate limit, riprova fra {e.seconds}s.") from e
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Risoluzione numero di telefono -> Telegram User
+# ---------------------------------------------------------------------------
+
+_DIGITS_RE = re.compile(r"[^\d+]")
+
+
+def normalize_phone_to_e164(raw: str, default_country_code: str = "39") -> Optional[str]:
+    """Normalizza un numero in formato E.164 (+CC...).
+
+    Heuristics:
+    - Strip di tutti i caratteri non-cifra/non-+
+    - Se comincia con '+': lasciato cosi'
+    - Se comincia con '00': trasformato in '+' (prefisso internazionale alternativo)
+    - Se comincia gia' con il default_country_code: aggiunge '+'
+    - Se sembra un mobile italiano (3 + 9-10 cifre): assume '+39'
+    - Altrimenti ritorna None (non normalizzabile in modo affidabile)
+    """
+    if not raw:
+        return None
+    s = _DIGITS_RE.sub("", str(raw))
+    if not s:
+        return None
+    if s.startswith("+"):
+        # Doppio + difensivo
+        s = "+" + s.lstrip("+").lstrip("0")
+        return s if len(s) >= 8 else None
+    if s.startswith("00"):
+        s = "+" + s[2:]
+        return s if len(s) >= 8 else None
+    if s.startswith(default_country_code) and len(s) >= len(default_country_code) + 8:
+        return "+" + s
+    # Italian mobile heuristic: starts with 3, length 9-11
+    if default_country_code == "39" and s.startswith("3") and 9 <= len(s) <= 11:
+        return "+39" + s
+    return None
+
+
+async def _resolve_phone_async(session_string: str, phone_e164: str) -> Optional[dict]:
+    client = _new_client(session_string)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            return None
+        try:
+            resolved = await client(ResolvePhoneRequest(phone=phone_e164.lstrip("+")))
+        except PhoneNotOccupiedError:
+            return None
+        users = getattr(resolved, "users", []) or []
+        if not users:
+            return None
+        u = users[0]
+        return {
+            "user_id": u.id,
+            "username": getattr(u, "username", None),
+            "first_name": getattr(u, "first_name", "") or "",
+            "last_name": getattr(u, "last_name", "") or "",
+        }
+    finally:
+        await client.disconnect()
+
+
+def resolve_phone(session_string: str, raw_phone: str) -> dict:
+    """Risolve un numero di telefono a un utente Telegram (se la privacy lo permette).
+
+    Output (dict):
+        {
+          "ok": bool,
+          "error": str | None,  # "normalize_failed" | "not_on_telegram"
+                                  # | "privacy" | "session_invalid" | "unknown: <descr>"
+          "phone_e164": str | None,  # numero normalizzato (anche se la lookup fallisce)
+          "user_id": int | omitted,
+          "username": str | None,
+          "first_name": str | None,
+        }
+
+    Solleva TelegramOperationError per errori globali (FloodWait).
+    """
+    phone_e164 = normalize_phone_to_e164(raw_phone)
+    if not phone_e164:
+        return {"ok": False, "error": "normalize_failed", "phone_e164": None}
+    try:
+        res = _run(_resolve_phone_async(session_string, phone_e164))
+    except FloodWaitError as e:
+        raise TelegramOperationError(f"Rate limit Telegram, riprova fra {e.seconds}s.") from e
+    except TelegramOperationError:
+        raise
+    except Exception as e:
+        return {"ok": False, "error": f"unknown: {e}", "phone_e164": phone_e164}
+    if res is None:
+        # PhoneNotOccupied o privacy: Telegram non distingue i due casi
+        return {"ok": False, "error": "not_on_telegram_or_privacy", "phone_e164": phone_e164}
+    return {
+        "ok": True,
+        "error": None,
+        "phone_e164": phone_e164,
+        "user_id": res["user_id"],
+        "username": res.get("username"),
+        "first_name": res.get("first_name"),
+        "last_name": res.get("last_name"),
+    }
 
 
 async def _get_poll_message_async(

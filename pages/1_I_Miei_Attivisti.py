@@ -4,12 +4,16 @@ from firebase_admin import firestore
 import pandas as pd
 import json
 
+import time as _time
 from lib.telegram_client import (
     TelegramConfigError,
     TelegramLoginError,
+    TelegramOperationError,
     encrypt_session,
     is_telegram_configured,
     logout as tg_logout,
+    normalize_phone_to_e164,
+    resolve_phone as tg_resolve_phone,
     send_code as tg_send_code,
     sign_in_with_code as tg_sign_in_with_code,
     sign_in_with_password as tg_sign_in_with_password,
@@ -269,6 +273,112 @@ with st.expander(f"📍 {current_i18n.get('chapter_section_title', 'Chapter Tele
                 st.rerun()
             except Exception as e:
                 st.error(f"{current_i18n.get('save_error', 'Save error:')} {e}")
+
+# 4.7 SEZIONE SINCRONIZZAZIONE TELEGRAM DA NUMERI
+existing_session_for_sync = try_decrypt_session(telegram_session_encrypted)
+with st.expander(f"🔄 {current_i18n.get('phone_sync_title', 'Sincronizza Telegram da numeri')}", expanded=False):
+    st.write(current_i18n.get("phone_sync_desc", "Per ogni attivista con numero di telefono ma senza username Telegram, prova a risolvere via il numero. Utile per chi non ha un @username pubblico."))
+    if not is_telegram_configured():
+        st.warning(current_i18n.get("tg_not_configured", "Telegram integration not yet configured."))
+    elif not existing_session_for_sync:
+        st.warning(current_i18n.get("cubes_no_session", "Telegram non connesso."))
+    else:
+        # Conta candidati (attivisti senza user_id che hanno un telefono)
+        candidates = []
+        unresolvable_phones = []
+        for a in activists:
+            if a.get("telegram_user_id"):
+                continue  # gia' risolto
+            tel = a.get("telefono", "")
+            if not tel:
+                continue  # niente numero, niente sync
+            normalized = normalize_phone_to_e164(tel)
+            if not normalized:
+                unresolvable_phones.append({
+                    "nome": a.get("nome", ""),
+                    "cognome": a.get("cognome", ""),
+                    "telefono": tel,
+                })
+                continue
+            candidates.append(a)
+
+        n_total = len(candidates)
+        if n_total == 0:
+            st.info(current_i18n.get("phone_sync_nothing_to_do", "Nessun attivista da risolvere (tutti gia' hanno user_id Telegram o numero non normalizzabile)."))
+        else:
+            st.write(current_i18n.get("phone_sync_will_process", "Saranno processati {n} attivisti.").replace("{n}", str(n_total)))
+            if st.button(f"🔄 {current_i18n.get('phone_sync_btn', 'Avvia sincronizzazione')}", key="btn_phone_sync", type="primary"):
+                progress = st.empty()
+                results_rows = []
+                for i, act in enumerate(candidates, start=1):
+                    progress.info(
+                        current_i18n.get("phone_sync_progress", "Sincronizzo {n}/{total} — {name}")
+                        .replace("{n}", str(i))
+                        .replace("{total}", str(n_total))
+                        .replace("{name}", f"{act.get('nome', '')} {act.get('cognome', '')}")
+                    )
+                    try:
+                        res = tg_resolve_phone(existing_session_for_sync, act.get("telefono", ""))
+                    except TelegramOperationError as exc:
+                        progress.error(str(exc))
+                        results_rows.append({
+                            "Nome": f"{act.get('nome', '')} {act.get('cognome', '')}",
+                            "Tel": act.get("telefono", ""),
+                            "Esito": f"❌ {exc}",
+                        })
+                        break
+                    if res.get("ok"):
+                        # Aggiorna l'attivista (ArrayRemove vecchio + ArrayUnion nuovo)
+                        updated = dict(act)
+                        updated["telegram_user_id"] = res["user_id"]
+                        if res.get("username") and not updated.get("telegram_username"):
+                            updated["telegram_username"] = res["username"]
+                        try:
+                            batch = db.batch()
+                            batch.update(doc_ref, {"activists": firestore.ArrayRemove([act])})
+                            batch.update(doc_ref, {"activists": firestore.ArrayUnion([updated])})
+                            batch.commit()
+                            results_rows.append({
+                                "Nome": f"{act.get('nome', '')} {act.get('cognome', '')}",
+                                "Tel": res.get("phone_e164") or act.get("telefono", ""),
+                                "Esito": f"✅ user_id={res['user_id']}" + (f", @{res['username']}" if res.get('username') else " (senza username)"),
+                            })
+                        except Exception as exc:
+                            results_rows.append({
+                                "Nome": f"{act.get('nome', '')} {act.get('cognome', '')}",
+                                "Tel": res.get("phone_e164") or act.get("telefono", ""),
+                                "Esito": f"⚠️ Salvataggio fallito: {exc}",
+                            })
+                    else:
+                        err_code = res.get("error", "unknown")
+                        err_label = {
+                            "normalize_failed": "❌ Numero non normalizzabile",
+                            "not_on_telegram_or_privacy": "❌ Non su Telegram o privacy",
+                            "session_invalid": "🔌 Sessione non valida",
+                        }.get(err_code, f"❌ {err_code}")
+                        results_rows.append({
+                            "Nome": f"{act.get('nome', '')} {act.get('cognome', '')}",
+                            "Tel": res.get("phone_e164") or act.get("telefono", ""),
+                            "Esito": err_label,
+                        })
+                    _time.sleep(1.5)  # anti-FloodWait
+
+                progress.empty()
+                ok_count = sum(1 for r in results_rows if r["Esito"].startswith("✅"))
+                fail_count = len(results_rows) - ok_count
+                st.success(
+                    current_i18n.get("phone_sync_done", "Sincronizzazione completata: {ok} OK, {fail} falliti.")
+                    .replace("{ok}", str(ok_count))
+                    .replace("{fail}", str(fail_count))
+                )
+                if results_rows:
+                    st.dataframe(pd.DataFrame(results_rows), hide_index=True, use_container_width=True)
+
+        if unresolvable_phones:
+            with st.expander(f"⚠️ {current_i18n.get('phone_sync_unnormalizable', 'Numeri non normalizzabili')} ({len(unresolvable_phones)})"):
+                for u in unresolvable_phones:
+                    st.write(f"- {u['nome']} {u['cognome']}: `{u['telefono']}`")
+                st.caption(current_i18n.get("phone_sync_unnormalizable_hint", "Modifica l'attivista e correggi il numero in formato +39... o 320XXXXXXX."))
 
 st.markdown("---")
 
