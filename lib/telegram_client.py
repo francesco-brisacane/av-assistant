@@ -413,6 +413,122 @@ def logout(session_string: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Elenco gruppi a cui appartiene l'utente
+# ---------------------------------------------------------------------------
+
+async def _list_groups_async(session_string: str) -> List[dict]:
+    client = _new_client(session_string)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            raise TelegramOperationError("Sessione Telegram non valida. Riconnettiti.")
+        groups: List[dict] = []
+        async for dialog in client.iter_dialogs():
+            entity = dialog.entity
+            # Includiamo gruppi base (Chat) e supergruppi (Channel con megagroup=True).
+            # Escludiamo canali broadcast e chat 1:1.
+            is_basic_group = type(entity).__name__ == "Chat"
+            is_megagroup = type(entity).__name__ == "Channel" and getattr(entity, "megagroup", False)
+            if not (is_basic_group or is_megagroup):
+                continue
+            # Per supergruppi serve il full channel id (-100<id>); dialog.id lo fornisce gia' cosi'.
+            groups.append({
+                "chat_id": dialog.id,
+                "title": dialog.name or "",
+                "is_megagroup": is_megagroup,
+            })
+        # Ordina alfabeticamente per titolo (case-insensitive)
+        groups.sort(key=lambda g: (g["title"] or "").lower())
+        return groups
+    finally:
+        await client.disconnect()
+
+
+async def _list_open_polls_async(
+    session_string: str, chat_ref: ChatRef, limit: int
+) -> List[dict]:
+    client = _new_client(session_string)
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            raise TelegramOperationError("Sessione Telegram non valida. Riconnettiti.")
+        try:
+            entity = await client.get_entity(chat_ref)
+        except (ValueError, UsernameNotOccupiedError) as e:
+            raise TelegramOperationError("Gruppo Telegram non trovato.") from e
+        except ChannelPrivateError as e:
+            raise TelegramOperationError("Gruppo privato non accessibile.") from e
+
+        # Determina il prefisso del link per costruire URL al messaggio
+        ent_username = getattr(entity, "username", None)
+        ent_id = getattr(entity, "id", None)
+        if ent_username:
+            link_prefix = f"https://t.me/{ent_username}/"
+        elif ent_id:
+            link_prefix = f"https://t.me/c/{ent_id}/"
+        else:
+            link_prefix = ""
+
+        polls: List[dict] = []
+        async for msg in client.iter_messages(entity, limit=limit):
+            if not isinstance(msg.media, MessageMediaPoll):
+                continue
+            poll = msg.media.poll
+            if getattr(poll, "closed", False):
+                continue
+            results_field = getattr(msg.media, "results", None)
+            total_voters = getattr(results_field, "total_voters", 0) if results_field else 0
+            polls.append({
+                "msg_id": msg.id,
+                "question": _extract_text(poll.question),
+                "is_anonymous": not getattr(poll, "public_voters", False),
+                "multiple_choice": getattr(poll, "multiple_choice", False),
+                "total_voters": total_voters or 0,
+                "date": msg.date,
+                "link": (link_prefix + str(msg.id)) if link_prefix else "",
+            })
+        # Piu' recenti prima
+        polls.sort(key=lambda p: p["date"] or 0, reverse=True)
+        return polls
+    finally:
+        await client.disconnect()
+
+
+def list_open_polls(session_string: str, chat_ref: ChatRef, limit: int = 200) -> List[dict]:
+    """Elenca i sondaggi aperti (non chiusi) tra gli ultimi `limit` messaggi del gruppo.
+
+    Ritorna lista di dict ordinati per data discendente:
+        {"msg_id": int, "question": str, "is_anonymous": bool, "multiple_choice": bool,
+         "total_voters": int, "date": datetime, "link": str}
+    """
+    chat_ref = _normalize_chat_ref(chat_ref)
+    try:
+        return _run(_list_open_polls_async(session_string, chat_ref, limit))
+    except TelegramOperationError:
+        raise
+    except FloodWaitError as e:
+        raise TelegramOperationError(f"Telegram rate limit, riprova fra {e.seconds}s.") from e
+    except Exception as e:
+        raise TelegramOperationError(f"Errore durante la lettura dei sondaggi: {e}") from e
+
+
+def list_groups(session_string: str) -> List[dict]:
+    """Elenca i gruppi (base + supergruppi) a cui appartiene l'account.
+
+    Ritorna lista di dict: {"chat_id": int, "title": str, "is_megagroup": bool}.
+    Per supergruppi il chat_id e' nel formato -100<internal>.
+    """
+    try:
+        return _run(_list_groups_async(session_string))
+    except TelegramOperationError:
+        raise
+    except FloodWaitError as e:
+        raise TelegramOperationError(f"Telegram rate limit, riprova fra {e.seconds}s.") from e
+    except Exception as e:
+        raise TelegramOperationError(f"Errore durante la lettura dei gruppi: {e}") from e
+
+
+# ---------------------------------------------------------------------------
 # Fase 2 - Lettura sondaggi
 # ---------------------------------------------------------------------------
 

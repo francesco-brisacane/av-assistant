@@ -11,6 +11,7 @@ from lib.telegram_client import (
     TelegramOperationError,
     encrypt_session,
     is_telegram_configured,
+    list_groups as tg_list_groups,
     logout as tg_logout,
     normalize_phone_to_e164,
     resolve_phone as tg_resolve_phone,
@@ -248,31 +249,96 @@ with st.expander(f"📡 {current_i18n.get('tg_section_title', 'Connect your Tele
                     st.rerun()
 
 # 4.6 SEZIONE GRUPPO TELEGRAM DEL CAPITOLO
+existing_session_for_groups = try_decrypt_session(telegram_session_encrypted)
 with st.expander(f"📍 {current_i18n.get('chapter_section_title', 'Chapter Telegram group')}", expanded=False):
     st.write(current_i18n.get("chapter_section_desc", ""))
-    with st.form("chapter_form", clear_on_submit=False):
-        chat_id_input = st.text_input(
-            current_i18n.get("chapter_chat_id_label", "Telegram group chat ID"),
-            value=telegram_chat_id_saved,
-            help=current_i18n.get("chapter_chat_id_help", ""),
+
+    # Stato corrente salvato
+    if telegram_chat_id_saved:
+        current_label = telegram_chat_title_saved or telegram_chat_id_saved
+        st.caption(
+            current_i18n.get("chapter_current", "Current: {label} (ID {id})")
+            .replace("{label}", str(current_label))
+            .replace("{id}", str(telegram_chat_id_saved))
         )
-        chat_title_input = st.text_input(
-            current_i18n.get("chapter_chat_title_label", "Group name"),
-            value=telegram_chat_title_saved,
-        )
-        chapter_submitted = st.form_submit_button(
-            current_i18n.get("chapter_btn_save", "Save group configuration")
-        )
-        if chapter_submitted:
+
+    # Se Telegram e' connesso, offri picker dai dialog
+    if existing_session_for_groups:
+        col_load, _ = st.columns([3, 5])
+        if col_load.button(
+            f"🔄 {current_i18n.get('chapter_load_groups_btn', 'Load my Telegram groups')}",
+            key="btn_load_tg_groups",
+        ):
             try:
-                doc_ref.set({
-                    "telegram_chat_id": chat_id_input.strip(),
-                    "telegram_chat_title": chat_title_input.strip(),
-                }, merge=True)
-                st.success(current_i18n.get("chapter_saved_success", "Chapter group configuration saved."))
-                st.rerun()
-            except Exception as e:
-                st.error(f"{current_i18n.get('save_error', 'Save error:')} {e}")
+                with st.spinner("..."):
+                    st.session_state["tg_groups_cache"] = tg_list_groups(existing_session_for_groups)
+            except TelegramOperationError as e:
+                st.error(str(e))
+
+        groups_cache = st.session_state.get("tg_groups_cache")
+        if groups_cache is not None:
+            if not groups_cache:
+                st.info(current_i18n.get("chapter_no_groups", "No groups found in your Telegram account."))
+            else:
+                # Pre-seleziona il gruppo salvato se presente
+                try:
+                    saved_id_int = int(str(telegram_chat_id_saved).strip()) if telegram_chat_id_saved else None
+                except ValueError:
+                    saved_id_int = None
+                default_idx = 0
+                for i, g in enumerate(groups_cache):
+                    if saved_id_int is not None and g["chat_id"] == saved_id_int:
+                        default_idx = i
+                        break
+
+                with st.form("chapter_form_picker", clear_on_submit=False):
+                    chosen = st.selectbox(
+                        current_i18n.get("chapter_group_select_label", "Choose your chapter group"),
+                        options=groups_cache,
+                        format_func=lambda g: f"{g['title']}  ·  {g['chat_id']}",
+                        index=default_idx,
+                    )
+                    chapter_submitted = st.form_submit_button(
+                        current_i18n.get("chapter_btn_save", "Save group configuration")
+                    )
+                    if chapter_submitted and chosen:
+                        try:
+                            doc_ref.set({
+                                "telegram_chat_id": str(chosen["chat_id"]),
+                                "telegram_chat_title": chosen["title"],
+                            }, merge=True)
+                            st.success(current_i18n.get("chapter_saved_success", "Chapter group configuration saved."))
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"{current_i18n.get('save_error', 'Save error:')} {e}")
+    else:
+        st.info(current_i18n.get("chapter_connect_first", "Connect Telegram above to pick from your groups, or enter the ID manually below."))
+
+    # Fallback: inserimento manuale (sempre disponibile)
+    with st.expander(f"✏️ {current_i18n.get('chapter_manual_entry', 'Enter manually')}", expanded=not existing_session_for_groups):
+        with st.form("chapter_form_manual", clear_on_submit=False):
+            chat_id_input = st.text_input(
+                current_i18n.get("chapter_chat_id_label", "Telegram group chat ID"),
+                value=telegram_chat_id_saved,
+                help=current_i18n.get("chapter_chat_id_help", ""),
+            )
+            chat_title_input = st.text_input(
+                current_i18n.get("chapter_chat_title_label", "Group name"),
+                value=telegram_chat_title_saved,
+            )
+            chapter_submitted_manual = st.form_submit_button(
+                current_i18n.get("chapter_btn_save", "Save group configuration")
+            )
+            if chapter_submitted_manual:
+                try:
+                    doc_ref.set({
+                        "telegram_chat_id": chat_id_input.strip(),
+                        "telegram_chat_title": chat_title_input.strip(),
+                    }, merge=True)
+                    st.success(current_i18n.get("chapter_saved_success", "Chapter group configuration saved."))
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"{current_i18n.get('save_error', 'Save error:')} {e}")
 
 # 4.7 SEZIONE SINCRONIZZAZIONE TELEGRAM DA NUMERI
 existing_session_for_sync = try_decrypt_session(telegram_session_encrypted)

@@ -27,6 +27,7 @@ from lib.telegram_client import (
     get_poll_message,
     get_poll_voters,
     is_telegram_configured,
+    list_open_polls as tg_list_open_polls,
     parse_telegram_message_link,
     send_dm,
     try_decrypt_session,
@@ -500,6 +501,29 @@ with st.expander("➕ " + t("cubes_create_title", "Crea nuovo cubo"), expanded=(
     if blocked:
         st.info(t("cubes_complete_setup_first", "Completa la configurazione Telegram prima di creare eventi."))
     else:
+        # Caricamento on-demand dei sondaggi aperti dal gruppo del capitolo
+        polls_cache_key = "cubes_open_polls_cache"
+        col_lp1, col_lp2 = st.columns([3, 5])
+        if col_lp1.button(
+            "🔄 " + t("cubes_load_open_polls", "Carica sondaggi aperti dal gruppo"),
+            key="btn_load_open_polls",
+        ):
+            try:
+                with st.spinner(t("cubes_fetching_poll", "Lettura sondaggi in corso...")):
+                    st.session_state[polls_cache_key] = tg_list_open_polls(
+                        session_string, telegram_chat_id_saved
+                    )
+            except TelegramOperationError as e:
+                st.error(str(e))
+        if telegram_chat_title_saved:
+            col_lp2.caption(
+                t("cubes_polls_from_group", "Group: {title}").replace("{title}", telegram_chat_title_saved)
+            )
+
+        polls_cache = st.session_state.get(polls_cache_key)
+        # Filtra a sondaggi non-anonimi (l'app non puo' usare quelli anonimi)
+        usable_polls = [p for p in (polls_cache or []) if not p.get("is_anonymous")]
+
         with st.form("create_cube_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
@@ -507,14 +531,58 @@ with st.expander("➕ " + t("cubes_create_title", "Crea nuovo cubo"), expanded=(
                 new_luogo = st.text_input(t("cubes_form_place", "Luogo"), max_chars=100)
             with col2:
                 new_ora = st.time_input(t("cubes_form_time", "Ora"), value=time(19, 0))
-                new_poll_link = st.text_input(
-                    t("cubes_form_poll_link", "Link sondaggio Telegram"),
-                    help=t("cubes_form_poll_link_help", "Apri il sondaggio nel gruppo, tocca/clicca i 3 puntini > Copia link, e incolla qui. Deve essere un sondaggio non-anonimo."),
+
+            new_poll_link = ""
+            if polls_cache is None:
+                st.caption(t("cubes_polls_not_loaded_hint", "Click 'Carica sondaggi aperti' to pick from the group, or paste a link manually below."))
+            elif not usable_polls:
+                if polls_cache:
+                    st.info(t("cubes_polls_only_anonymous", "Solo sondaggi anonimi trovati: non utilizzabili. Crea un sondaggio non-anonimo nel gruppo, oppure incolla il link manualmente."))
+                else:
+                    st.info(t("cubes_no_open_polls", "Nessun sondaggio aperto trovato nel gruppo. Incolla il link manualmente."))
+            else:
+                NONE_SENTINEL = "__none__"
+                options_list = [NONE_SENTINEL] + [p["link"] or f"msg:{p['msg_id']}" for p in usable_polls]
+                by_link = {(p["link"] or f"msg:{p['msg_id']}"): p for p in usable_polls}
+
+                def _fmt_poll(opt_val):
+                    if opt_val == NONE_SENTINEL:
+                        return t("cubes_poll_select_none", "— None / paste link below —")
+                    p = by_link.get(opt_val)
+                    if not p:
+                        return opt_val
+                    q = (p["question"] or "?").strip()
+                    if len(q) > 80:
+                        q = q[:77] + "..."
+                    try:
+                        d_s = p["date"].strftime("%Y-%m-%d") if p.get("date") else ""
+                    except Exception:
+                        d_s = ""
+                    flags = []
+                    if p.get("multiple_choice"):
+                        flags.append("multi")
+                    flags_s = f" [{', '.join(flags)}]" if flags else ""
+                    return f"{d_s}  ·  {q}{flags_s}  ({p.get('total_voters', 0)} voti)"
+
+                chosen_link = st.selectbox(
+                    t("cubes_open_poll_select_label", "Sondaggi aperti nel gruppo"),
+                    options=options_list,
+                    format_func=_fmt_poll,
+                    index=0,
+                    key="select_open_poll",
                 )
+                if chosen_link != NONE_SENTINEL:
+                    new_poll_link = chosen_link
+
+            new_poll_link_manual = st.text_input(
+                t("cubes_form_poll_link", "Link sondaggio Telegram"),
+                value=new_poll_link,
+                help=t("cubes_form_poll_link_help", "Apri il sondaggio nel gruppo, tocca/clicca i 3 puntini > Copia link, e incolla qui. Deve essere un sondaggio non-anonimo."),
+            )
             new_note = st.text_area(t("cubes_form_notes", "Note"), max_chars=500)
             submitted = st.form_submit_button(t("cubes_create_btn", "Crea cubo"))
             if submitted:
-                submit_new_cube(new_data, new_ora, new_luogo, new_note, new_poll_link)
+                submit_new_cube(new_data, new_ora, new_luogo, new_note, new_poll_link_manual)
 
 
 # ---------------------------------------------------------------------------
