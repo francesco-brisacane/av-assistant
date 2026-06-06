@@ -1,4 +1,7 @@
-streamlit
+# Pin a 1.52.2: dalla 1.53 c'e' una regressione di st.login()/st.logout() che
+# rompe l'OAuth Google su Streamlit Cloud (torna dall'auth ma resta sloggato).
+# Vedi streamlit/streamlit#14290. Non sbloccare senza testare il login in prod.
+streamlit==1.52.2
 google-generativeai
 groq
 openai
