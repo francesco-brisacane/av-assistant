@@ -15,6 +15,16 @@ Due vincoli di Streamlit Cloud da aggirare:
    jsDelivr non serve mai una versione vecchia; per aggiornare gli asset si
    crea un nuovo tag (pwa-v2, ...) e si aggiorna _ASSET_TAG qui sotto.
 
+Inoltre, su Streamlit Cloud la pagina e' annidata: il documento TOP e' un
+wrapper di Streamlit Cloud (che possiede il proprio <link rel=manifest> ->
+/-/build/manifest.json, nome "Streamlit"); l'app vera gira in un iframe
+"streamlitApp"; il nostro components.html crea un terzo iframe. Chrome legge il
+manifest del documento TOP, e onora SOLO il primo <link rel=manifest>. Percio'
+NON aggiungiamo un nuovo link (verrebbe ignorato): risaliamo a window.top e
+SOVRASCRIVIAMO l'href del manifest gia' presente (+ apple-touch-icon, theme).
+Tutti i frame sono same-origin, quindi l'accesso a window.top.document e'
+consentito (verificato su browser reale).
+
 Cosa si ottiene: icona AV + apertura standalone su iOS ("Aggiungi a Home") e
 Android ("Aggiungi a schermata Home" dal menu).
 
@@ -35,42 +45,60 @@ _APP_TITLE = "AV Assistant"
 
 
 def inject_pwa() -> None:
-    """Inietta manifest + meta tag PWA nell'`<head>` della pagina padre.
+    """Sovrascrive il manifest del documento top per puntarlo agli asset AV.
 
-    Idempotente: se i tag sono gia' presenti non fa nulla (gestisce i rerun di
-    Streamlit). Da chiamare una volta in app.py, dopo pg.run().
+    Risale a window.top (il wrapper Streamlit Cloud, o la pagina stessa in
+    locale) e riscrive href del <link rel=manifest> esistente + apple-touch-icon
+    + meta. Idempotente per natura (riscrive in-place ad ogni rerun). Da chiamare
+    in app.py dopo pg.run().
     """
     html = f"""
     <script>
       (function() {{
-        var doc = window.parent.document;
-        if (doc.getElementById("av-pwa-manifest")) return;
+        var doc;
+        try {{ doc = window.top.document; }} catch (e) {{
+          try {{ doc = window.parent.document; }} catch (e2) {{ return; }}
+        }}
+        if (!doc || !doc.head) return;
 
-        function meta(name, content) {{
-          var m = doc.createElement("meta");
-          m.setAttribute("name", name);
-          m.setAttribute("content", content);
-          doc.head.appendChild(m);
+        // Chrome onora solo il PRIMO <link rel=manifest>: riusiamo quello
+        // esistente (di Streamlit) sovrascrivendone l'href, non aggiungendone uno.
+        var link = doc.querySelector('link[rel="manifest"]');
+        if (!link) {{
+          link = doc.createElement("link");
+          link.setAttribute("rel", "manifest");
+          doc.head.appendChild(link);
+        }}
+        link.setAttribute("crossorigin", "anonymous");  // fetch CORS (jsDelivr)
+        if (link.getAttribute("href") !== "{_MANIFEST_URL}") {{
+          link.setAttribute("href", "{_MANIFEST_URL}");
         }}
 
-        // Manifest cross-origin (jsDelivr): serve crossorigin per la fetch CORS.
-        var link = doc.createElement("link");
-        link.id = "av-pwa-manifest";
-        link.rel = "manifest";
-        link.crossOrigin = "anonymous";
-        link.href = "{_MANIFEST_URL}";
-        doc.head.appendChild(link);
+        // apple-touch-icon: sovrascrivi tutti quelli esistenti, o creane uno.
+        var icons = doc.querySelectorAll('link[rel~="apple-touch-icon"]');
+        if (icons.length) {{
+          icons.forEach(function (n) {{ n.setAttribute("href", "{_APPLE_ICON_URL}"); }});
+        }} else {{
+          var a = doc.createElement("link");
+          a.setAttribute("rel", "apple-touch-icon");
+          a.setAttribute("href", "{_APPLE_ICON_URL}");
+          doc.head.appendChild(a);
+        }}
 
-        var apple = doc.createElement("link");
-        apple.rel = "apple-touch-icon";
-        apple.href = "{_APPLE_ICON_URL}";
-        doc.head.appendChild(apple);
-
-        meta("theme-color", "{_THEME_COLOR}");
-        meta("mobile-web-app-capable", "yes");
-        meta("apple-mobile-web-app-capable", "yes");
-        meta("apple-mobile-web-app-status-bar-style", "black");
-        meta("apple-mobile-web-app-title", "{_APP_TITLE}");
+        function setMeta(name, content) {{
+          var m = doc.querySelector('meta[name="' + name + '"]');
+          if (!m) {{
+            m = doc.createElement("meta");
+            m.setAttribute("name", name);
+            doc.head.appendChild(m);
+          }}
+          m.setAttribute("content", content);
+        }}
+        setMeta("theme-color", "{_THEME_COLOR}");
+        setMeta("mobile-web-app-capable", "yes");
+        setMeta("apple-mobile-web-app-capable", "yes");
+        setMeta("apple-mobile-web-app-status-bar-style", "black");
+        setMeta("apple-mobile-web-app-title", "{_APP_TITLE}");
       }})();
     </script>
     """
