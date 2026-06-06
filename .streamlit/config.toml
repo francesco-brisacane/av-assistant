@@ -8,3 +8,4 @@ font = "sans serif"              # Font pulito
 
 [server]
 headless = true
+enableStaticServing = true   # serve i file in static/ (manifest PWA + icone) sotto /app/static/

@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+from lib.pwa import inject_pwa
 
 def load_json(filepath):
     try:
@@ -50,3 +51,8 @@ if is_logged_in:
 
 pg = st.navigation(pages)
 pg.run()
+
+# Rende l'app installabile come PWA su mobile ("Aggiungi a Home").
+# Dopo pg.run() perche' la pagina puo' chiamare st.set_page_config, che deve
+# restare il primo comando Streamlit; per il browser l'ordine non conta.
+inject_pwa()
