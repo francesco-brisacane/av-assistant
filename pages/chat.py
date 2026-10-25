@@ -11,6 +11,7 @@ import os
 import re
 import firebase_admin
 from firebase_admin import credentials, firestore
+from lib.voice_input import inject_voice_input
 
 # --- 1. FUNZIONI DI CARICAMENTO ---
 def load_json(filepath):
@@ -530,6 +531,7 @@ for msg in st.session_state.messages:
 
 # Input Utente
 placeholder = f"{ui_text['input_placeholder']} ({current_expert['label'][lang_code]})"
+inject_voice_input(lang_code, ui_text)
 if prompt := st.chat_input(placeholder):
     user_msg_date = datetime.datetime.now().isoformat()
     st.session_state.messages.append({"role": "user", "content": prompt, "date": user_msg_date})

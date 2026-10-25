@@ -6,7 +6,12 @@
     "input_placeholder": "Scrivi qui...",
     "loading": "Sto elaborando...",
     "clear_chat": "🗑️ Nuova Chat",
-    "footer": "Powered by AV Tech Team"
+    "footer": "Powered by AV Tech Team",
+    "voice_start": "Detta con il microfono",
+    "voice_stop": "Interrompi dettatura",
+    "voice_error_permission": "Accesso al microfono negato: abilitalo nelle impostazioni del browser.",
+    "voice_error_insecure": "Il microfono funziona solo su HTTPS o localhost: questa pagina è aperta da un indirizzo non sicuro.",
+    "voice_error_generic": "Riconoscimento vocale non disponibile"
   },
   "EN": {
     "title": "AV Assistant",
@@ -15,6 +20,11 @@
     "input_placeholder": "Type here...",
     "loading": "Thinking...",
     "clear_chat": "🗑️ New Chat",
-    "footer": "Powered by AV Tech Team"
+    "footer": "Powered by AV Tech Team",
+    "voice_start": "Dictate with microphone",
+    "voice_stop": "Stop dictation",
+    "voice_error_permission": "Microphone access denied: enable it in your browser settings.",
+    "voice_error_insecure": "The microphone only works over HTTPS or localhost: this page was opened from an insecure address.",
+    "voice_error_generic": "Speech recognition unavailable"
   }
 }
