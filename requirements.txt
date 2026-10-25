@@ -2,12 +2,14 @@
 # rompe l'OAuth Google su Streamlit Cloud (torna dall'auth ma resta sloggato).
 # Vedi streamlit/streamlit#14290. Non sbloccare senza testare il login in prod.
 streamlit==1.52.2
-google-generativeai
+google-genai
 groq
 openai
 extra-streamlit-components
 uuid
 firebase-admin
+# grpcio >= 1.83: google-auth emette un FutureWarning senza supporto PQC (obbligatorio da aprile 2027).
+grpcio>=1.83
 Authlib>=1.3.2,<1.5
 telethon>=1.36,<2
 cryptography>=42,<46

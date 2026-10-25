@@ -1,6 +1,6 @@
 import streamlit as st
 from groq import Groq
-import google.generativeai as genai
+from google import genai
 from openai import OpenAI  # <--- NEW: Libreria standard per OpenRouter
 import json
 import extra_streamlit_components as stx
@@ -20,7 +20,7 @@ def load_json(filepath):
     except FileNotFoundError:
         # Default di sicurezza
         if "app_config" in filepath:
-            return {"provider": "groq", "model_name": "llama-3.3-70b-versatile", "temperature": 0.6}
+            return {"provider": "groq", "model_name": "openai/gpt-oss-120b", "temperature": 0.6}
         st.error(f"File non trovato: {filepath}")
         return {}
 
@@ -228,7 +228,7 @@ if not st.session_state.messages and not st.session_state.get("state_loaded"):
 
 # Configurazione globale (fallback)
 global_provider = APP_CONFIG.get("provider", "groq").lower()
-global_model = APP_CONFIG.get("model_name", "llama-3.3-70b-versatile")
+global_model = APP_CONFIG.get("model_name", "openai/gpt-oss-120b")
 
 
 query_params = st.query_params
@@ -382,6 +382,7 @@ model_name = current_expert.get("model_name", global_model)
 api_key = None
 client_groq = None
 client_openrouter = None
+client_gemini = None
 
 # LOGICA DI INIZIALIZZAZIONE CLIENT (Dinamica)
 if provider == "groq":
@@ -404,7 +405,7 @@ elif provider == "gemini":
         api_key = st.sidebar.text_input("Google API Key (AIza...)", type="password")
     
     if api_key:
-        genai.configure(api_key=api_key)
+        client_gemini = genai.Client(api_key=api_key)
 
 elif provider == "openrouter":
     try:
@@ -549,7 +550,7 @@ if prompt := st.chat_input(placeholder):
                     model=model_name, 
                     messages=messages_payload,
                     temperature=APP_CONFIG.get("temperature", 0.6),
-                    max_tokens=1024,
+                    max_tokens=4096,
                     stream=True,
                 )
 
@@ -584,19 +585,18 @@ if prompt := st.chat_input(placeholder):
 
             # === LOGICA GEMINI ===
             elif provider == "gemini":
-                model = genai.GenerativeModel(
-                    model_name=model_name,
-                    system_instruction=final_system_instruction
-                )
-                
-                gemini_history = []
+                gemini_contents = []
                 for msg in st.session_state.messages[:-1]:
                     role = "user" if msg["role"] == "user" else "model"
-                    gemini_history.append({"role": role, "parts": [msg["content"]]})
-                
-                chat = model.start_chat(history=gemini_history)
-                response = chat.send_message(prompt, stream=True)
-                
+                    gemini_contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+                gemini_contents.append({"role": "user", "parts": [{"text": prompt}]})
+
+                response = client_gemini.models.generate_content_stream(
+                    model=model_name,
+                    contents=gemini_contents,
+                    config={"system_instruction": final_system_instruction},
+                )
+
                 for chunk in response:
                     if chunk.text:
                         full_res += chunk.text

@@ -9,7 +9,7 @@
     "prompt_file": "prompts/nutritionist.md",
     "kb_file": "data/kb_nutrition.txt",
     "provider": "groq",
-    "model_name": "llama-3.3-70b-versatile",
+    "model_name": "openai/gpt-oss-120b",
     "disclaimer": {
       "IT": "⚠️ DISCLAIMER: Non sono un medico. Info a solo scopo educativo.",
       "EN": "⚠️ DISCLAIMER: Not a doctor. Educational purpose only."
@@ -36,7 +36,7 @@
     "prompt_file": "prompts/activist.md",
     "kb_file": "data/kb_activist.txt",
     "provider": "groq",
-    "model_name": "llama-3.3-70b-versatile",
+    "model_name": "openai/gpt-oss-120b",
     "disclaimer": {
       "IT": "Consigli basati sull'approccio socratico di AV.",
       "EN": "Advice based on AV Socratic method."
