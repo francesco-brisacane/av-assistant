@@ -20,6 +20,8 @@ env/
 .vscode/
 .idea/
 .DS_Store
+# Impostazioni locali di Claude Code (permessi, launch.json)
+.claude/
 
 # --- DATA (Opzionale) ---
 # Se in futuro avrai file pdf pesanti che non vuoi su GitHub, scommenta:
