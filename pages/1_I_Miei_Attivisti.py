@@ -529,10 +529,11 @@ if activists:
         with st.form("edit_activist_form"):
             col1, col2 = st.columns(2)
             
-            # Gestione data per il picker
+            # Gestione data per il picker (data vuota/invalida -> NaT, che date_input non accetta)
             try:
-                current_date = pd.to_datetime(act.get("data_ingresso", "")).date()
-            except:
+                parsed_date = pd.to_datetime(act.get("data_ingresso") or None, errors='coerce')
+                current_date = None if pd.isna(parsed_date) else parsed_date.date()
+            except Exception:
                 current_date = None
                 
             with col1:

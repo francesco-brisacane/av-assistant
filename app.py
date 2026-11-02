@@ -28,6 +28,8 @@ organizers_page = st.Page("pages/2_Gestione_Organizzatori.py", title=current_i18
 chat_viewer_page = st.Page("pages/3_Chat_Attivisti.py", title=current_i18n.get("menu_chat_viewer", "Chat Attivisti"), icon="📑")
 cubes_page = st.Page("pages/4_Gestione_Cubi.py", title=current_i18n.get("menu_cubes", "Cubes"), icon="📅")
 history_page = st.Page("pages/5_Storico_Partecipazioni.py", title=current_i18n.get("menu_history", "Participation History"), icon="📊")
+objections_page = st.Page("pages/6_Obiezioni.py", title=current_i18n.get("menu_objections", "Objections"), icon="🛡️")
+objections_manage_page = st.Page("pages/7_Gestione_Obiezioni.py", title=current_i18n.get("menu_objections_manage", "Manage Objections"), icon="🗂️")
 
 # Determine visibility based on user profiles
 user_profiles = st.session_state.get("user_profiles", [])
@@ -45,12 +47,27 @@ if is_logged_in:
         pages.append(activists_page)
         pages.append(cubes_page)
         pages.append(history_page)
+        pages.append(objections_manage_page)
     if "admin" in user_profiles:
         pages.append(organizers_page)
     if "org" in user_profiles or "activist" in user_profiles:
         pages.append(chat_viewer_page)
+    if any(p in user_profiles for p in ("org", "admin", "activist")):
+        pages.append(objections_page)
 
 pg = st.navigation(pages)
+
+# Il tema ha primaryColor bianco: senza questa regola i bottoni primary sono bianco
+# su bianco. Base per tutte le pagine; le pagine con un proprio CSS per i primary
+# (es. rosso per Elimina) lo iniettano dopo e quindi prevalgono.
+st.markdown("""
+    <style>
+    button[data-testid="stBaseButton-primary"] {
+        color: #000000 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 pg.run()
 
 # Rende l'app installabile come PWA su mobile ("Aggiungi a Home").
