@@ -31,6 +31,11 @@ Android ("Aggiungi a schermata Home" dal menu).
 Cosa NON si ottiene (limite piattaforma, non del codice): il prompt automatico
 "Installa app" di Chrome e l'offline, che richiederebbero un service worker con
 scope "/" non ospitabile su Streamlit Cloud. L'app richiede comunque la rete.
+
+Limite residuo: l'override arriva solo dopo l'avvio dell'app (~6s, e mai se
+l'app e' ibernata). Chi installa prima si ritrova l'icona Streamlit. Per questo
+il link da condividere e' la pagina di lancio statica in docs/ (GitHub Pages),
+che ha manifest e icone AV direttamente nell'HTML e poi reindirizza qui.
 """
 import streamlit.components.v1 as components
 

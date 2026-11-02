@@ -79,6 +79,12 @@ Quando l'organizer salva la mappatura manualmente (form "Salva mappatura"), `rem
 - Fase 3 (✅ completata): invio DM reminder via Telethon dal client dell'organizer, con template personalizzabile (placeholder {nome}/{cognome}/{data}/{ora}/{luogo}/{poll_link}), pre-spunta automatica dei non-rispondenti, opt-in per i 'Forse', invio sequenziale con delay anti-FloodWait, fallback link `t.me/<username>` quando il DM e' bloccato (privacy/blocked/deactivated). Include sincronizzazione `telegram_user_id` da numero di telefono via `contacts.ResolvePhoneRequest` (bottone manuale in I Miei Attivisti), e match dei votanti che usa user_id come chiave canonica prima dell'username.
 - Fase 4 (✅ completata): pagina 'Storico Partecipazioni' con filtri periodo (30/90/365/tutto), tabella per attivista (invitati / partecipato / non risposto / % / ultimo cubo / ultima attivita'), statistiche capitolo (media partecipanti, tasso partecipazione, tasso risposta), grafico trend mensile, export CSV. Considera solo cubi con poll_link e categoria 'yes' come partecipazione effettiva.
 
+## PWA (icona sulla Home)
+
+Due meccanismi complementari:
+- [lib/pwa.py](lib/pwa.py) — dentro l'app Streamlit sovrascrive via JS il manifest del documento top con quello AV (asset su jsDelivr, tag `pwa-v1`). Funziona solo ad app avviata: se l'app e' ibernata o l'utente installa troppo presto, resta l'icona Streamlit.
+- [docs/](docs/) — pagina di lancio statica pubblicata su GitHub Pages (`https://francesco-brisacane.github.io/av-assistant/`, Settings → Pages → branch `main`, cartella `/docs`). Ha manifest e icone AV nell'HTML; aperta dalla Home (`display-mode: standalone` o `?pwa=1`) reindirizza subito all'app Streamlit, altrimenti mostra bottone "Apri" + istruzioni di installazione. **E' questo il link da condividere** per l'installazione. Se cambi le icone in `static/`, ricopiale anche in `docs/`.
+
 ## Auth & profili
 
 - Login Google via `st.login("google")` (Authlib, configurato in `.streamlit/secrets.toml`).

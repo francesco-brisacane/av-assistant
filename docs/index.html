@@ -1,0 +1,153 @@
+<!doctype html>
+<!--
+  Pagina di lancio PWA di AV Assistant, pubblicata su GitHub Pages (cartella docs/).
+
+  Perche' esiste: su Streamlit Cloud il manifest AV viene iniettato via JS solo
+  dopo che l'app e' partita (vedi lib/pwa.py). Se l'app dorme o l'utente installa
+  troppo presto, il telefono salva l'icona di Streamlit. Questa pagina statica ha
+  manifest e icone AV direttamente nell'HTML, quindi l'icona e' sempre giusta.
+
+  Comportamento:
+  - aperta dall'icona sulla Home (standalone o ?pwa=1): redirect immediato all'app;
+  - aperta nel browser: mostra bottone "Apri" + istruzioni per l'installazione.
+-->
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AV Assistant</title>
+  <meta name="description" content="Assistente Anonymous for the Voiceless">
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="theme-color" content="#000000">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="AV Assistant">
+
+  <script>
+    // Il redirect va fatto il prima possibile, prima del render della landing.
+    var APP_URL = "https://av-assistant-jahevfahcjvxnt7sz5nnwk.streamlit.app/";
+
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var launchedFromHome =
+        params.has("pwa") ||
+        window.navigator.standalone === true ||  // iOS
+        window.matchMedia("(display-mode: standalone)").matches;
+      if (!launchedFromHome) return;
+      params.delete("pwa");
+      var qs = params.toString();
+      location.replace(APP_URL + (qs ? "?" + qs : "") + location.hash);
+      document.documentElement.className = "launching";
+    })();
+  </script>
+
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      text-align: center;
+    }
+    main { width: 100%; max-width: 380px; }
+    .logo { width: 128px; height: 128px; border-radius: 28px; display: block; margin: 0 auto 20px; }
+    h1 { font-size: 26px; margin: 0 0 6px; font-weight: 700; }
+    .sub { color: #aaa; margin: 0 0 28px; font-size: 15px; }
+    .btn {
+      display: block; width: 100%;
+      padding: 14px 18px; margin-bottom: 12px;
+      border-radius: 12px; border: 1px solid #fff;
+      font-size: 16px; font-weight: 600; text-decoration: none; cursor: pointer;
+      font-family: inherit;
+    }
+    .primary { background: #fff; color: #000; }
+    .secondary { background: transparent; color: #fff; }
+    .howto {
+      margin-top: 20px; padding: 16px; border-radius: 12px;
+      background: #111; color: #ccc; font-size: 14px; line-height: 1.5; text-align: left;
+    }
+    .howto strong { color: #fff; }
+    [hidden] { display: none !important; }
+    /* Durante il redirect mostriamo solo il logo, niente landing. */
+    .launching .landing { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <img class="logo" src="icon-512.png" alt="">
+    <div class="landing">
+      <h1>AV Assistant</h1>
+      <p class="sub" data-i18n="sub"></p>
+      <a class="btn primary" id="open" data-i18n="open"></a>
+      <button class="btn secondary" id="install" type="button" data-i18n="install" hidden></button>
+      <div class="howto" id="howto"></div>
+    </div>
+  </main>
+
+  <script>
+    var STRINGS = {
+      IT: {
+        sub: "Assistente Anonymous for the Voiceless",
+        open: "Apri l'assistente",
+        install: "Installa sul telefono",
+        ios: "<strong>Per averla sulla schermata Home:</strong> tocca il pulsante <strong>Condividi</strong> di Safari, poi <strong>Aggiungi alla schermata Home</strong>.",
+        android: "<strong>Per averla sulla schermata Home:</strong> apri il menu <strong>⋮</strong> di Chrome e scegli <strong>Aggiungi a schermata Home</strong> (o <strong>Installa app</strong>).",
+        other: "<strong>Per averla sulla schermata Home:</strong> apri questa pagina dal telefono e usa <strong>Aggiungi a schermata Home</strong> dal menu del browser."
+      },
+      EN: {
+        sub: "Anonymous for the Voiceless assistant",
+        open: "Open the assistant",
+        install: "Install on your phone",
+        ios: "<strong>To add it to your Home Screen:</strong> tap Safari's <strong>Share</strong> button, then <strong>Add to Home Screen</strong>.",
+        android: "<strong>To add it to your Home Screen:</strong> open Chrome's <strong>⋮</strong> menu and choose <strong>Add to Home screen</strong> (or <strong>Install app</strong>).",
+        other: "<strong>To add it to your Home Screen:</strong> open this page on your phone and use <strong>Add to Home screen</strong> from the browser menu."
+      }
+    };
+
+    var params = new URLSearchParams(location.search);
+    var lang = (params.get("lang") || "").toUpperCase();
+    if (!STRINGS[lang]) lang = /^it\b/i.test(navigator.language || "") ? "IT" : "EN";
+    var t = STRINGS[lang];
+    document.documentElement.lang = lang.toLowerCase();
+
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      el.textContent = t[el.getAttribute("data-i18n")];
+    });
+
+    document.getElementById("open").href = APP_URL + (location.search || "");
+
+    var ua = navigator.userAgent;
+    var isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    var isAndroid = /Android/.test(ua);
+    document.getElementById("howto").innerHTML = isIOS ? t.ios : isAndroid ? t.android : t.other;
+
+    // Chrome/Edge su Android: prompt di installazione nativo, se disponibile.
+    var deferredPrompt = null;
+    var installBtn = document.getElementById("install");
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.hidden = false;
+    });
+    installBtn.addEventListener("click", function () {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.finally(function () {
+        deferredPrompt = null;
+        installBtn.hidden = true;
+      });
+    });
+    window.addEventListener("appinstalled", function () { installBtn.hidden = true; });
+  </script>
+</body>
+</html>
