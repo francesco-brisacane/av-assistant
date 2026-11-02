@@ -12,6 +12,7 @@ import re
 import firebase_admin
 from firebase_admin import credentials, firestore
 from lib.voice_input import inject_voice_input
+from lib.objections import build_chat_context, load_objections
 
 # --- 1. FUNZIONI DI CARICAMENTO ---
 def load_json(filepath):
@@ -537,6 +538,24 @@ if prompt := st.chat_input(placeholder):
     st.session_state.messages.append({"role": "user", "content": prompt, "date": user_msg_date})
     with st.chat_message("user"):
         st.markdown(prompt)
+
+    # Catalogo obiezioni (experts.json -> "objections_kb"): schede pertinenti agli ultimi
+    # messaggi appese al system prompt. Se Firestore non risponde la chat prosegue senza.
+    objections_kb = current_expert.get("objections_kb")
+    if objections_kb:
+        try:
+            window = objections_kb.get("window", 4)
+            recent = st.session_state.messages[-window:] if window else st.session_state.messages
+            kb_context = build_chat_context(
+                load_objections(db, lang=lang_code),
+                [m["content"] for m in recent],
+                max_cards=objections_kb.get("max_cards", 4),
+                list_questions=objections_kb.get("list_questions", False),
+            )
+            if kb_context:
+                final_system_instruction += "\n\n" + kb_context
+        except Exception as e:
+            print(f"DEBUG: Objections KB unavailable: {e}")
 
     with st.chat_message("assistant"):
         stream_box = st.empty()

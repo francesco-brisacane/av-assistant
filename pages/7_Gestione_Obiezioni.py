@@ -8,6 +8,10 @@ Pagina "Gestione Obiezioni" — riservata org/admin.
     elimina definitivamente. L'admin puo' importare i contenuti iniziali da
     data/objections_seed.json (idempotente).
 
+Nell'editor il bottone "Genera bozza con AI" compila i campi con una proposta
+(lib.objections.draft_objection, prompt in prompts/objection_drafter.md), che l'org rivede
+prima di salvare: nulla viene pubblicato in automatico.
+
 Quando si apre l'editor di una scheda la pagina mostra solo il form (i tab di Streamlit
 non si possono selezionare da codice, cosi' l'editor resta sempre in primo piano).
 """
@@ -24,6 +28,7 @@ from lib.objections import (
     SEED_FILE,
     category_label,
     delete_objection,
+    draft_objection,
     import_seed,
     load_objections,
     load_open_requests_count,
@@ -35,6 +40,7 @@ from lib.objections import (
     set_objection_status,
     split_lines,
 )
+from lib.llm import LLMError
 
 
 # ---------------------------------------------------------------------------
@@ -131,17 +137,41 @@ if edit:
             if req.get("context"):
                 st.caption(t("obj_context", "Contesto") + ": " + req["context"])
 
-    with st.form(f"{k}_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            f_lang = st.selectbox(t("objm_field_lang", "Lingua"), LANGS,
-                                  index=LANGS.index(p.get("lang", lang_code)) if p.get("lang") in LANGS else 0,
-                                  key=f"{k}_lang")
-        with c2:
-            f_cat = st.selectbox(t("obj_filter_category", "Categoria"), CATEGORIES,
-                                 index=CATEGORIES.index(p["category"]) if p.get("category") in CATEGORIES else len(CATEGORIES) - 1,
-                                 format_func=lambda c: category_label(c, t), key=f"{k}_cat")
+    # Lingua e obiezione stanno fuori dal form: servono alla bozza AI prima del salvataggio.
+    c1, c2 = st.columns([1, 4])
+    with c1:
+        f_lang = st.selectbox(t("objm_field_lang", "Lingua"), LANGS,
+                              index=LANGS.index(p.get("lang", lang_code)) if p.get("lang") in LANGS else 0,
+                              key=f"{k}_lang")
+    with c2:
         f_question = st.text_input(t("objm_field_question", "Obiezione") + " *", value=p.get("question", ""), key=f"{k}_q")
+
+    if st.button("✨ " + t("objm_btn_ai_draft", "Genera bozza con AI"), key=f"{k}_ai", disabled=not f_question.strip(),
+                 help=t("objm_ai_draft_help", "Compila i campi qui sotto con una proposta dell'AI, da rivedere prima di salvare. Sovrascrive quello che hai già scritto.")):
+        with st.spinner(t("objm_ai_drafting", "Sto scrivendo la bozza...")):
+            try:
+                # Schede simili come esempio di stile (o le prime del catalogo se non ce ne sono).
+                examples = search_objections(f_question, load_objections(db, lang=f_lang), min_score=0.3, limit=2)
+                if not examples:
+                    examples = load_objections(db, lang=f_lang)[:2]
+                draft = draft_objection(
+                    f_question, (req or {}).get("context", ""), f_lang, examples,
+                    {c: category_label(c, t) for c in CATEGORIES},
+                )
+                edit["prefill"] = {**p, **draft, "lang": f_lang, "question": draft.get("question") or f_question}
+                edit["nonce"] = uuid.uuid4().hex[:8]
+                edit["ai_drafted"] = True
+                st.rerun()
+            except LLMError as e:
+                st.error(t("objm_ai_error", "Non sono riuscito a generare la bozza") + f": {e}")
+
+    if edit.get("ai_drafted"):
+        st.info("✨ " + t("objm_ai_drafted", "Bozza generata dall'AI: rileggila e correggila prima di salvare."))
+
+    with st.form(f"{k}_form"):
+        f_cat = st.selectbox(t("obj_filter_category", "Categoria"), CATEGORIES,
+                             index=CATEGORIES.index(p["category"]) if p.get("category") in CATEGORIES else len(CATEGORIES) - 1,
+                             format_func=lambda c: category_label(c, t), key=f"{k}_cat")
         f_variants = st.text_area(t("objm_field_variants", "Varianti (una per riga)"),
                                   value="\n".join(p.get("variants") or []), height=100, key=f"{k}_var",
                                   help=t("objm_field_variants_help", "Altri modi in cui viene detta: migliorano la ricerca."))

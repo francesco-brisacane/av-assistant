@@ -323,7 +323,12 @@
         "objm_seed_title": "Starter content",
         "objm_seed_desc": "Import the {n} starter cards (IT/EN). Cards already imported are left untouched, so it's safe to run again.",
         "objm_seed_btn": "Import starter content",
-        "objm_seed_done": "Imported {imported} cards ({skipped} already present)."
+        "objm_seed_done": "Imported {imported} cards ({skipped} already present).",
+        "objm_btn_ai_draft": "Generate AI draft",
+        "objm_ai_draft_help": "Fills in the fields below with an AI proposal to review before saving. It overwrites what you've already written.",
+        "objm_ai_drafting": "Writing the draft...",
+        "objm_ai_error": "Couldn't generate the draft",
+        "objm_ai_drafted": "AI-generated draft: read it through and fix it before saving."
     },
     "IT": {
         "login_required": "Devi effettuare il login per accedere a questa pagina.",
@@ -649,6 +654,11 @@
         "objm_seed_title": "Contenuti iniziali",
         "objm_seed_desc": "Importa le {n} schede di partenza (IT/EN). Le schede già importate non vengono toccate, quindi puoi rilanciarlo senza rischi.",
         "objm_seed_btn": "Importa contenuti iniziali",
-        "objm_seed_done": "Importate {imported} schede ({skipped} già presenti)."
+        "objm_seed_done": "Importate {imported} schede ({skipped} già presenti).",
+        "objm_btn_ai_draft": "Genera bozza con AI",
+        "objm_ai_draft_help": "Compila i campi qui sotto con una proposta dell'AI, da rivedere prima di salvare. Sovrascrive quello che hai già scritto.",
+        "objm_ai_drafting": "Sto scrivendo la bozza...",
+        "objm_ai_error": "Non sono riuscito a generare la bozza",
+        "objm_ai_drafted": "Bozza generata dall'AI: rileggila e correggila prima di salvare."
     }
 }

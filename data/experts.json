@@ -40,6 +40,10 @@
     "disclaimer": {
       "IT": "Consigli basati sull'approccio socratico di AV.",
       "EN": "Advice based on AV Socratic method."
+    },
+    "objections_kb": {
+      "max_cards": 4,
+      "window": 4
     }
   },
   {
@@ -83,6 +87,11 @@
       "admin",
       "org",
       "activist"
-    ]
+    ],
+    "objections_kb": {
+      "max_cards": 5,
+      "window": 0,
+      "list_questions": true
+    }
   }
 ]
