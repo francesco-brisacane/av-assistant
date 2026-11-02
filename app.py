@@ -55,6 +55,18 @@ if is_logged_in:
         pages.append(objections_page)
 
 pg = st.navigation(pages)
+
+# Il tema ha primaryColor bianco: senza questa regola i bottoni primary sono bianco
+# su bianco. Base per tutte le pagine; le pagine con un proprio CSS per i primary
+# (es. rosso per Elimina) lo iniettano dopo e quindi prevalgono.
+st.markdown("""
+    <style>
+    button[data-testid="stBaseButton-primary"] {
+        color: #000000 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 pg.run()
 
 # Rende l'app installabile come PWA su mobile ("Aggiungi a Home").
