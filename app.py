@@ -10,6 +10,7 @@ def load_json(filepath):
         return {}
 
 I18N = load_json("data/i18n.json")
+UI = load_json("data/ui.json")
 
 # Initialize language early so Page titles can be translated
 if "lang" not in st.session_state:
@@ -55,4 +56,6 @@ pg.run()
 # Rende l'app installabile come PWA su mobile ("Aggiungi a Home").
 # Dopo pg.run() perche' la pagina puo' chiamare st.set_page_config, che deve
 # restare il primo comando Streamlit; per il browser l'ordine non conta.
-inject_pwa()
+# La lingua va riletta: la pagina puo' averla cambiata durante il run.
+pwa_lang = st.session_state.get("lang", "EN")
+inject_pwa(UI.get(pwa_lang, UI.get("EN", {})))

@@ -11,7 +11,13 @@
     "voice_stop": "Interrompi dettatura",
     "voice_error_permission": "Accesso al microfono negato: abilitalo nelle impostazioni del browser.",
     "voice_error_insecure": "Il microfono funziona solo su HTTPS o localhost: questa pagina è aperta da un indirizzo non sicuro.",
-    "voice_error_generic": "Riconoscimento vocale non disponibile"
+    "voice_error_generic": "Riconoscimento vocale non disponibile",
+    "pwa_install_title": "Installa AV Assistant",
+    "pwa_install_text": "Aggiungila alla schermata Home e aprila come un'app.",
+    "pwa_install_button": "Installa",
+    "pwa_install_android": "Apri il menu ⋮ del browser e scegli «Installa app» o «Aggiungi a schermata Home».",
+    "pwa_install_ios": "In Safari tocca Condividi, poi «Aggiungi alla schermata Home».",
+    "pwa_install_close": "Chiudi"
   },
   "EN": {
     "title": "AV Assistant",
@@ -25,6 +31,12 @@
     "voice_stop": "Stop dictation",
     "voice_error_permission": "Microphone access denied: enable it in your browser settings.",
     "voice_error_insecure": "The microphone only works over HTTPS or localhost: this page was opened from an insecure address.",
-    "voice_error_generic": "Speech recognition unavailable"
+    "voice_error_generic": "Speech recognition unavailable",
+    "pwa_install_title": "Install AV Assistant",
+    "pwa_install_text": "Add it to your Home Screen and open it like an app.",
+    "pwa_install_button": "Install",
+    "pwa_install_android": "Open the browser's ⋮ menu and choose “Install app” or “Add to Home screen”.",
+    "pwa_install_ios": "In Safari tap Share, then “Add to Home Screen”.",
+    "pwa_install_close": "Close"
   }
 }

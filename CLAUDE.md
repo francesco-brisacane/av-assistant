@@ -82,8 +82,8 @@ Quando l'organizer salva la mappatura manualmente (form "Salva mappatura"), `rem
 ## PWA (icona sulla Home)
 
 Due meccanismi complementari:
-- [lib/pwa.py](lib/pwa.py) — dentro l'app Streamlit sovrascrive via JS il manifest del documento top con quello AV (asset su jsDelivr, tag `pwa-v1`). Funziona solo ad app avviata: se l'app e' ibernata o l'utente installa troppo presto, resta l'icona Streamlit.
-- Pagina di lancio statica <https://av-assistant.github.io/> — vive in un repo separato, `av-assistant/av-assistant.github.io` (organizzazione GitHub `av-assistant`), pubblicato da GitHub Pages. Ha manifest e icone AV nell'HTML; aperta dalla Home (`display-mode: standalone` o `?pwa=1`) reindirizza subito all'app Streamlit, altrimenti mostra bottone "Apri" + istruzioni di installazione. **E' questo il link da condividere** per l'installazione. Se cambi le icone in `static/` o l'URL dell'app, aggiorna anche quel repo.
+- [lib/pwa.py](lib/pwa.py) — dentro l'app Streamlit sovrascrive via JS il manifest del documento top con quello AV (asset su jsDelivr, tag `pwa-v1`). L'override arriva solo ad app avviata, quindi chi installa troppo presto (o con l'app ibernata) si ritrova l'icona Streamlit. Per questo, **dopo** l'override, compare un banner "Installa AV Assistant" (testi `pwa_install_*` in `ui.json`): su Chrome/Android apre il prompt nativo (`beforeinstallprompt`), altrimenti mostra le istruzioni manuali (menu ⋮ / Condividi su iOS). Non compare se l'app e' aperta dalla Home o se l'utente l'ha chiuso negli ultimi 14 giorni.
+- Pagina di lancio statica <https://av-assistant.github.io/> — vive in un repo separato, `av-assistant/av-assistant.github.io` (organizzazione GitHub `av-assistant`), pubblicato da GitHub Pages. E' il link d'ingresso da condividere: bottone "Apri l'assistente" (passa `?lang=`) + invito a installare dal banner dentro l'app. Non dichiara un manifest, per non far installare lei al posto dell'app (l'app installata da li' aprirebbe Streamlit con la barra "fuori scope" di Chrome). Se cambi le icone in `static/` o l'URL dell'app, aggiorna anche quel repo.
 
 ## Auth & profili
 
