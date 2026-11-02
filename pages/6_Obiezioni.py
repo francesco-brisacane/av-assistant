@@ -176,7 +176,7 @@ with tab_train:
         if current_id not in {o["id"] for o in train_pool}:
             current_id = None
 
-        if st.button("🎲 " + t("obj_train_next", "Nuova obiezione"), type="primary", key="obj_train_next_btn") or current_id is None:
+        if st.button("🎲 " + t("obj_train_next", "Nuova obiezione"), key="obj_train_next_btn") or current_id is None:
             candidates = [o for o in train_pool if o["id"] != current_id] or train_pool
             current_id = random.choice(candidates)["id"]
             st.session_state["obj_train_id"] = current_id
@@ -225,7 +225,7 @@ with tab_propose:
             with st.expander(f"🗨️ {obj.get('question', '')}"):
                 render_objection_body(obj, t)
 
-    if st.button("📨 " + t("obj_propose_submit", "Invia richiesta"), type="primary", disabled=not req_text.strip()):
+    if st.button("📨 " + t("obj_propose_submit", "Invia richiesta"), disabled=not req_text.strip()):
         already_open = any(
             r.get("status") == "open" and normalize(r.get("text", "")) == normalize(req_text)
             for r in my_requests

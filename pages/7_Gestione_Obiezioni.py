@@ -155,7 +155,7 @@ if edit:
                                  value="\n".join(p.get("sources") or []), height=80, key=f"{k}_src")
 
         b1, b2 = st.columns(2)
-        submitted = b1.form_submit_button("💾 " + t("objm_btn_save", "Salva"), type="primary", use_container_width=True)
+        submitted = b1.form_submit_button("💾 " + t("objm_btn_save", "Salva"), use_container_width=True)
         cancelled = b2.form_submit_button(t("objm_btn_cancel", "Annulla"), use_container_width=True)
 
     if cancelled:
@@ -263,7 +263,7 @@ with tab_requests:
 
             a1, a2, a3 = st.columns(3)
             with a1:
-                if st.button("✍️ " + t("objm_btn_answer", "Rispondi con nuova scheda"), key=f"objm_ans_{rid}", use_container_width=True, type="primary"):
+                if st.button("✍️ " + t("objm_btn_answer", "Rispondi con nuova scheda"), key=f"objm_ans_{rid}", use_container_width=True):
                     open_editor(request=req)
                     st.rerun()
             with a2:
@@ -275,7 +275,7 @@ with tab_requests:
                         target = st.selectbox(t("objm_merge_target", "Scheda"), [o["id"] for o in ordered],
                                               format_func=format_objection_option, key=f"objm_merge_sel_{rid}")
                         note = st.text_input(t("objm_note_optional", "Nota per l'attivista (facoltativa)"), key=f"objm_merge_note_{rid}")
-                        if st.button(t("objm_btn_confirm", "Conferma"), key=f"objm_merge_ok_{rid}", type="primary"):
+                        if st.button(t("objm_btn_confirm", "Conferma"), key=f"objm_merge_ok_{rid}"):
                             resolve_request(db, rid, "merged", user_email, objection_id=target, note=note)
                             flash(t("objm_request_merged", "Richiesta collegata alla scheda esistente."))
                             st.rerun()
@@ -297,7 +297,7 @@ with tab_catalog:
         cat_query = st.text_input(t("obj_search_label", "Cerca un'obiezione"), key="objm_cat_search")
     with col_btn:
         st.write("")
-        if st.button("➕ " + t("objm_btn_new", "Nuova scheda"), use_container_width=True, type="primary"):
+        if st.button("➕ " + t("objm_btn_new", "Nuova scheda"), use_container_width=True):
             open_editor()
             st.session_state["objm_edit"]["prefill"]["lang"] = cat_lang
             st.rerun()
@@ -334,7 +334,7 @@ with tab_catalog:
                 if st.session_state.get(confirm_key):
                     st.warning(t("objm_delete_confirm", "Eliminare definitivamente questa scheda?"))
                     c_yes, c_no = st.columns(2)
-                    if c_yes.button(t("objm_btn_confirm", "Conferma"), key=f"objm_del_yes_{oid}", type="primary"):
+                    if c_yes.button(t("objm_btn_confirm", "Conferma"), key=f"objm_del_yes_{oid}"):
                         delete_objection(db, oid)
                         st.session_state.pop(confirm_key, None)
                         st.rerun()
