@@ -83,7 +83,7 @@ Quando l'organizer salva la mappatura manualmente (form "Salva mappatura"), `rem
 
 Due meccanismi complementari:
 - [lib/pwa.py](lib/pwa.py) — dentro l'app Streamlit sovrascrive via JS il manifest del documento top con quello AV (asset su jsDelivr, tag `pwa-v1`). Funziona solo ad app avviata: se l'app e' ibernata o l'utente installa troppo presto, resta l'icona Streamlit.
-- [docs/](docs/) — pagina di lancio statica pubblicata su GitHub Pages (`https://francesco-brisacane.github.io/av-assistant/`, Settings → Pages → branch `main`, cartella `/docs`). Ha manifest e icone AV nell'HTML; aperta dalla Home (`display-mode: standalone` o `?pwa=1`) reindirizza subito all'app Streamlit, altrimenti mostra bottone "Apri" + istruzioni di installazione. **E' questo il link da condividere** per l'installazione. Se cambi le icone in `static/`, ricopiale anche in `docs/`.
+- Pagina di lancio statica <https://av-assistant.github.io/> — vive in un repo separato, `av-assistant/av-assistant.github.io` (organizzazione GitHub `av-assistant`), pubblicato da GitHub Pages. Ha manifest e icone AV nell'HTML; aperta dalla Home (`display-mode: standalone` o `?pwa=1`) reindirizza subito all'app Streamlit, altrimenti mostra bottone "Apri" + istruzioni di installazione. **E' questo il link da condividere** per l'installazione. Se cambi le icone in `static/` o l'URL dell'app, aggiorna anche quel repo.
 
 ## Auth & profili
 

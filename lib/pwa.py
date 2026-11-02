@@ -34,8 +34,9 @@ scope "/" non ospitabile su Streamlit Cloud. L'app richiede comunque la rete.
 
 Limite residuo: l'override arriva solo dopo l'avvio dell'app (~6s, e mai se
 l'app e' ibernata). Chi installa prima si ritrova l'icona Streamlit. Per questo
-il link da condividere e' la pagina di lancio statica in docs/ (GitHub Pages),
-che ha manifest e icone AV direttamente nell'HTML e poi reindirizza qui.
+il link da condividere e' la pagina di lancio statica https://av-assistant.github.io/
+(repo av-assistant/av-assistant.github.io), che ha manifest e icone AV
+direttamente nell'HTML e poi reindirizza qui.
 """
 import streamlit.components.v1 as components
 
