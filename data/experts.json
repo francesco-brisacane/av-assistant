@@ -66,15 +66,43 @@
         "options": [
           {
             "label": "🟢 Facile (Curioso)",
-            "value": "Sei un passante CURIOSO e APERTO. Fai domande semplici, accetti le risposte logiche e ti lasci guidare."
+            "value": "Sei un passante CURIOSO e APERTO. Fai domande semplici, accetti le risposte logiche e ti lasci guidare.",
+            "objections_script": {
+              "count": 2,
+              "categories": [
+                "nature",
+                "health",
+                "plants",
+                "practical",
+                "tradition"
+              ]
+            }
           },
           {
             "label": "🟡 Medio (Scettico)",
-            "value": "Sei un passante SCETTICO. Fai le obiezioni standard (leoni, piante, proteine). Accetti il punto solo se l'attivista è convincente."
+            "value": "Sei un passante SCETTICO. Fai le obiezioni del tuo copione in modo diretto ma non ostile. Accetti il punto solo se l'attivista è convincente.",
+            "objections_script": {
+              "count": 3,
+              "categories": [
+                "nature",
+                "health",
+                "humane",
+                "animals",
+                "plants",
+                "choice",
+                "tradition",
+                "practical",
+                "impact"
+              ]
+            }
           },
           {
             "label": "🔴 Difficile (Provocatore)",
-            "value": "Sei OSTILE e BENALTRISTA. Cerchi di cambiare discorso, attacchi le fonti, dici che i vegani sono estremi. Non cedere facilmente."
+            "value": "Sei OSTILE e BENALTRISTA. Cerchi di cambiare discorso, attacchi le fonti, dici che i vegani sono estremi. Non cedere facilmente.",
+            "objections_script": {
+              "count": 4,
+              "categories": []
+            }
           }
         ]
       }
@@ -89,9 +117,9 @@
       "activist"
     ],
     "objections_kb": {
-      "max_cards": 5,
+      "max_cards": 3,
       "window": 0,
-      "list_questions": true
+      "list_questions": false
     }
   }
 ]

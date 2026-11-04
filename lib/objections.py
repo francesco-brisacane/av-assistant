@@ -24,6 +24,7 @@ e il catalogo resta nell'ordine delle centinaia di schede.
 """
 
 import json
+import random
 import re
 import unicodedata
 from difflib import SequenceMatcher, get_close_matches
@@ -206,18 +207,64 @@ def format_card_for_prompt(obj):
     return "\n".join(lines)
 
 
-def build_chat_context(objections, recent_texts, max_cards=4, list_questions=False):
+def draw_script(objections, count, categories=None, rng=random):
+    """Estrae `count` schede a caso (solo dalle `categories` indicate, tutte se vuoto),
+    alternando le categorie per avere obiezioni il piu' possibile diverse tra loro."""
+    by_cat = {}
+    for o in objections:
+        if not categories or o.get("category") in categories:
+            by_cat.setdefault(o.get("category"), []).append(o)
+    for cards in by_cat.values():
+        rng.shuffle(cards)
+    cats = list(by_cat)
+    rng.shuffle(cats)
+    picked = []
+    while len(picked) < count and any(by_cat.values()):
+        for c in cats:
+            if by_cat[c] and len(picked) < count:
+                picked.append(by_cat[c].pop())
+    return picked
+
+
+def resolve_script(objections, saved, level, script_cfg, new_chat):
+    """Copione di obiezioni della sessione di training.
+
+    Riusa quello salvato (`saved` = {"level", "ids"}, persistito con la chat) finche' la chat
+    e' la stessa e il livello non cambia; altrimenti ne estrae uno nuovo secondo `script_cfg`
+    ({count, categories} dall'opzione di difficolta' in experts.json).
+    Ritorna (schede, stato_da_salvare)."""
+    by_id = {o["id"]: o for o in objections}
+    if saved and not new_chat and saved.get("level") == level:
+        cards = [by_id[i] for i in saved.get("ids", []) if i in by_id]
+        if cards:
+            return cards, saved
+    cards = draw_script(objections, script_cfg.get("count", 3), script_cfg.get("categories"))
+    return cards, {"level": level, "ids": [o["id"] for o in cards]}
+
+
+def build_chat_context(objections, recent_texts, max_cards=4, list_questions=False, script=None):
     """Sezione da appendere al system prompt di un esperto con `objections_kb` in experts.json.
 
-    - schede pertinenti agli ultimi messaggi (risposte condivise approvate dagli org);
-    - opzionale, l'elenco di tutte le obiezioni del catalogo (es. per il Training Protocollo,
-      dove il passante simulato deve usare obiezioni realistiche).
-    Il prompt dell'esperto spiega al modello come usare la sezione."""
+    - opzionale, il copione della sessione (`script`, vedi resolve_script): obiezioni che il
+      passante simulato del Training Protocollo deve sollevare, con le schede complete per
+      il valutatore;
+    - schede pertinenti agli ultimi messaggi (risposte condivise approvate dagli org),
+      escluse quelle gia' nel copione;
+    - opzionale, l'elenco di tutte le obiezioni del catalogo.
+    Il prompt dell'esperto spiega al modello come usare le sezioni."""
     parts = []
+    script = script or []
+    if script:
+        parts.append(
+            "COPIONE OBIEZIONI DELLA SESSIONE (schede complete):\n\n"
+            + "\n\n".join(format_card_for_prompt(o) for o in script)
+        )
     if list_questions and objections:
         questions = sorted({o.get("question", "") for o in objections if o.get("question")})
         parts.append("ELENCO OBIEZIONI DEL CATALOGO AV:\n" + "\n".join(f"- {q}" for q in questions))
-    cards = relevant_objections(recent_texts, objections, max_cards=max_cards)
+    script_ids = {o["id"] for o in script}
+    others = [o for o in objections if o.get("id") not in script_ids]
+    cards = relevant_objections(recent_texts, others, max_cards=max_cards)
     if cards:
         parts.append(
             "SCHEDE DEL CATALOGO OBIEZIONI AV PERTINENTI ALLA CONVERSAZIONE "

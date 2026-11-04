@@ -12,7 +12,7 @@ import re
 import firebase_admin
 from firebase_admin import credentials, firestore
 from lib.voice_input import inject_voice_input
-from lib.objections import build_chat_context, load_objections
+from lib.objections import build_chat_context, load_objections, resolve_script
 
 # --- 1. FUNZIONI DI CARICAMENTO ---
 def load_json(filepath):
@@ -348,6 +348,7 @@ with st.sidebar:
 
     # --- RENDER SETTINGS (GENERICO) ---
     prompt_placeholders = {}
+    selected_setting_options = []  # opzioni scelte (dict completi), es. per "objections_script"
     if "settings" in current_expert:
         st.markdown("---")
         for setting in current_expert["settings"]:
@@ -364,6 +365,7 @@ with st.sidebar:
                 on_change=on_setting_change
             )
             prompt_placeholders[f"{{{{{setting['key']}}}}}"] = opts_map[selection]
+            selected_setting_options.append(next(opt for opt in setting["options"] if opt["label"] == selection))
 
     if current_expert.get("disclaimer"):
         disclaimer_text = current_expert["disclaimer"].get(lang_code)
@@ -541,16 +543,32 @@ if prompt := st.chat_input(placeholder):
 
     # Catalogo obiezioni (experts.json -> "objections_kb"): schede pertinenti agli ultimi
     # messaggi appese al system prompt. Se Firestore non risponde la chat prosegue senza.
+    # Se l'opzione scelta di un setting ha "objections_script" (es. livello di difficolta' del
+    # Training Protocollo), si aggiunge un copione di obiezioni estratto a caso: resta lo stesso
+    # per tutta la chat (salvato come setting in set_objections_script) e si riestrae al primo
+    # messaggio di una chat nuova o al cambio di livello.
     objections_kb = current_expert.get("objections_kb")
     if objections_kb:
         try:
+            catalog = load_objections(db, lang=lang_code)
+            script_option = next((o for o in selected_setting_options if o.get("objections_script")), None)
+            script_cards = []
+            if script_option:
+                script_cards, st.session_state["set_objections_script"] = resolve_script(
+                    catalog,
+                    st.session_state.get("set_objections_script"),
+                    script_option["label"],
+                    script_option["objections_script"],
+                    new_chat=len(st.session_state.messages) <= 1,
+                )
             window = objections_kb.get("window", 4)
             recent = st.session_state.messages[-window:] if window else st.session_state.messages
             kb_context = build_chat_context(
-                load_objections(db, lang=lang_code),
+                catalog,
                 [m["content"] for m in recent],
                 max_cards=objections_kb.get("max_cards", 4),
                 list_questions=objections_kb.get("list_questions", False),
+                script=script_cards,
             )
             if kb_context:
                 final_system_instruction += "\n\n" + kb_context
